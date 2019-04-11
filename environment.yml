@@ -2,6 +2,3 @@ name: chat_app_env
 dependencies:
   - python>=3.6.6
   - twisted>=18.9.0
-  - pip
-  - pip:
-    - clint>=0.5.1
