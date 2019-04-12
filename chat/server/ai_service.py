@@ -3,9 +3,9 @@ import argparse
 from twisted.internet.protocol import ServerFactory
 from twisted.protocols.basic import LineReceiver
 
-import server.util.colors as colors
 import server.ai as ai
 
+# TODO: add logging everywhere!!!
 
 class ToxicServiceProtocol(LineReceiver):
     def rawDataReceived(self, data):
@@ -14,15 +14,15 @@ class ToxicServiceProtocol(LineReceiver):
 
     def lineReceived(self, line):
         line = line.decode('utf-8', errors='ignore')
-        # Synchronous.
-        mark = self.factory.check(line)
-        self.sendLine(self.make_response(line, mark))
 
+        # Synchronous!
+        marks = self.factory.serve(line)
+        self.sendLine(self.make_response(line, marks))
+
+    # Here goes actual message definition...
     @staticmethod
-    def make_response(line, mark):
-        if mark:
-            line = colors.RED + line + colors.ENDC
-        return line
+    def make_response(_, marks):
+        return ':'.join(map(str, marks))
 
     def sendLine(self, line):
         super().sendLine(line.encode('utf-8', errors='ignore'))
@@ -34,8 +34,8 @@ class ToxicServiceFactory(ServerFactory):
     def __init__(self, service):
         self.service = service
 
-    def check(self, line):
-        return self.service.check(line)
+    def serve(self, line):
+        return self.service.process(line)
 
 
 def parse_args():

@@ -4,6 +4,7 @@ from twisted.internet import stdio
 from twisted.protocols.basic import LineReceiver
 import os
 
+# TODO: handle connection loss.
 
 class IOProtocol(LineReceiver):
     delimiter = os.linesep.encode('utf-8')
