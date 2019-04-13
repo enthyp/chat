@@ -3,7 +3,7 @@ import argparse
 from twisted.internet.protocol import ServerFactory
 from twisted.protocols.basic import LineReceiver
 
-import server.ai as ai
+import ai as ai
 
 # TODO: add logging everywhere!!!
 
@@ -55,7 +55,7 @@ def service_main(port, local):
 
 if __name__ == '__main__':
     args = parse_args()
-    service_main(args.port, args.local)
+    service_main(args.port, args.l)
 
     from twisted.internet import reactor
     reactor.run()

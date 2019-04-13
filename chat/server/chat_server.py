@@ -5,8 +5,9 @@ from twisted.python import failure
 from twisted.internet import defer
 from twisted.internet.protocol import Factory, ClientFactory, connectionDone
 from twisted.protocols.basic import LineReceiver
+from twisted.protocols.policies import TimeoutMixin
 
-import server.util.colors as colors
+import util.colors as colors
 
 
 class ParseError(Exception):
@@ -18,11 +19,10 @@ def parse_args():
     parser.add_argument('port', type=int, help='Port to listen on.')
     parser.add_argument('service_port', type=int, help='Port on which checking service is available.')
     parser.add_argument('-l', action='store_true', help='Run on localhost (as opposed to all).')
-    parser.add_argument('-m', action='store_true', help='Mark toxic messages.')
-    parser.add_argument('-b', '--ban', type=int, default=-1, help='Max number of toxic messages until ban.')
+    parser.add_argument('-b', '--ban', type=int, default=None, help='Max number of toxic messages until ban.')
 
     args = parser.parse_args()
-    if args.ban < 0:
+    if args.ban and args.ban < 0:
         raise ParseError("ban should be non-negative.")
 
     return args
@@ -82,7 +82,7 @@ class ChatProtocol(LineReceiver):
         if self.factory.ban:
             scores = ''
             try:
-                scores = yield self.factory.get_scores(message)
+                scores = yield self.factory.get_scores(message, 1)
             except failure.Failure:
                 print('Failed to get scores from ML service.')
 
@@ -134,11 +134,10 @@ class ChatProtocol(LineReceiver):
 class ChatFactory(Factory):
     protocol = ChatProtocol
 
-    def __init__(self, mark, ban, service_port):
+    def __init__(self, ban, service_port):
         super().__init__()
         self.users = {}
-        self.mark = mark
-        self.ban = ban >= 0
+        self.ban = ban is not None
         self.warnings = ban
         self.service_port = service_port
 
@@ -147,41 +146,45 @@ class ChatFactory(Factory):
         protocol.factory = self
         return protocol
 
-    def get_scores(self, line):
-        if not self.mark:
-            return defer.succeed('')
-
-        factory = MLClientFactory(self.service_port, line)
+    def get_scores(self, line, timeout):
+        factory = MLClientFactory(self.service_port, line, timeout)
         from twisted.internet import reactor
         reactor.connectTCP('localhost', self.service_port, factory)  # TODO: add host choice.
 
         return factory.deferred
 
 
-class MLClient(LineReceiver):
+class MLClient(LineReceiver, TimeoutMixin):
+    def timeoutConnection(self):
+        print('Service timeout.')
+        self.transport.abortConnection()
+        self.factory.got_scores('')
+
     def rawDataReceived(self, data):
         print("Raw data received!")
         self.transport.loseConnection()
 
     def connectionMade(self):
+        self.setTimeout(self.factory.timeout)
         self.sendLine(self.factory.line)
 
     def sendLine(self, line):
         super().sendLine(line.encode('utf-8', errors='ignore'))
 
-    # TODO: make a superclass that handles them bytes properly!
+    # TODO: make a superclass that handles bytes properly!
     def lineReceived(self, line):
+        self.setTimeout(None)
         line = line.decode('utf-8', errors='ignore')
-        self.transport.loseConnection()  # ?
         self.factory.got_scores(line)
 
 
 class MLClientFactory(ClientFactory):
     protocol = MLClient
 
-    def __init__(self, port, line):
+    def __init__(self, port, line, timeout):
         self.port = port
         self.line = line
+        self.timeout = timeout
         self.deferred = defer.Deferred()
 
     def got_scores(self, msg):
@@ -195,8 +198,8 @@ class MLClientFactory(ClientFactory):
             d.errback(reason)
 
 
-def server_main(port, service_port, ban, mark, local):
-    factory = ChatFactory(mark, ban, service_port)
+def server_main(port, service_port, ban, local):
+    factory = ChatFactory(ban, service_port)
 
     from twisted.internet import reactor
     reactor.listenTCP(port, factory, interface='localhost' if local else '')
@@ -204,7 +207,7 @@ def server_main(port, service_port, ban, mark, local):
 if __name__ == '__main__':
     try:
         args = parse_args()
-        server_main(args.port, args.service_port, args.ban, args.m, args.l)
+        server_main(args.port, args.service_port, args.ban, args.l)
 
         from twisted.internet import reactor
         reactor.run()
