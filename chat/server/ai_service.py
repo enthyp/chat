@@ -1,62 +1,99 @@
-import argparse
+import typing
 
+from twisted.application import internet, service
 from twisted.internet.protocol import ServerFactory
 from twisted.protocols.basic import LineReceiver
+from twisted.python import log
 
-import ai as ai
+import ai
 
-# TODO: add logging everywhere!!!
+
+class AIResponse:
+    err_msg = 'Provide a colon-separated sequence of numbers.'
+
+    def __init__(self, scores=None):
+        if scores:
+            if isinstance(scores, str):
+                scores = scores.split(':')
+            if isinstance(scores, list):
+                try:
+                    self.scores = list(map(float, scores))
+                except ValueError:
+                    raise ValueError(self.err_msg)
+            else:
+                raise ValueError(self.err_msg)
+        else:
+            self.scores = []
+
+    def __str__(self):
+        return ':'.join(map(str, self.scores))
+
+    def __bool__(self):
+        return bool(self.scores)
+
+    # Example.
+    def positive(self):
+        return any([s > 0.5 for s in self.scores])
+
 
 class ToxicServiceProtocol(LineReceiver):
     def rawDataReceived(self, data):
-        print("Raw data received!")
+        log.err('Raw data received!')
         self.transport.loseConnection()
 
     def lineReceived(self, line):
         line = line.decode('utf-8', errors='ignore')
+        log.msg(f'Received line: {line}')
 
-        # Synchronous!
-        marks = self.factory.serve(line)
-        self.sendLine(self.make_response(line, marks))
+        scores = self.factory.serve(line)
+        log.msg(f'Got scores: {scores}')
 
-    # Here goes actual message definition...
-    @staticmethod
-    def make_response(_, marks):
-        return ':'.join(map(str, marks))
+        self.sendLine(str(AIResponse(scores)))
 
     def sendLine(self, line):
         super().sendLine(line.encode('utf-8', errors='ignore'))
 
 
-class ToxicServiceFactory(ServerFactory):
+class ToxicFactory(ServerFactory):
     protocol = ToxicServiceProtocol
 
     def __init__(self, service):
         self.service = service
 
+    # synchronous method
     def serve(self, line):
         return self.service.process(line)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Basic server server in Twisted.')
-    parser.add_argument('port', type=int, help='Port to listen on.')
-    parser.add_argument('-l', action='store_true', help='Run on localhost (as opposed to all).')
+class ToxicService(service.Service):
+    def __init__(self, model_path, get_model: typing.Callable[[str], ai.Model]):
+        self.model_path = model_path
+        self.get_model = get_model
+        self.model = None
 
-    return parser.parse_args()
+    def startService(self):
+        service.Service.startService(self)
+        self.model = self.get_model(self.model_path)
+        log.msg(f'Loaded model from {self.model_path}')
+
+    def process(self, msg):
+        return self.model.process(msg)
+
+# Service setup.
+service_port = 10001
+iface = 'localhost'
 
 
-def service_main(port, local):
-    service = ai.Checker()
-    factory = ToxicServiceFactory(service)
+def get_model_dummy(_):
+    return ai.Checker()
 
-    from twisted.internet import reactor
-    reactor.listenTCP(port, factory, interface='localhost' if local else '')
+supervisor = service.MultiService()
+toxic_service = ToxicService('', get_model_dummy)
+toxic_service.setServiceParent(supervisor)
 
-if __name__ == '__main__':
-    args = parse_args()
-    service_main(args.port, args.l)
+factory = ToxicFactory(toxic_service)
+tcp_service = internet.TCPServer(service_port, factory, interface=iface)
+tcp_service.setServiceParent(supervisor)
 
-    from twisted.internet import reactor
-    reactor.run()
-
+application = service.Application('toxic_service')
+supervisor.setServiceParent(application)

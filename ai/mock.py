@@ -8,5 +8,5 @@ class Checker(Model):
         self.keywords = ['honkey', 'honkie']
 
     def process(self, msg):
-        time.sleep(2 * random.random())
+        time.sleep(1.2 * random.random())
         return [int(kw in msg) for kw in self.keywords]

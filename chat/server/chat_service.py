@@ -1,31 +1,12 @@
-import argparse
-import datetime
-
-from twisted.python import failure
-from twisted.internet import defer
+from twisted.python import log
+from twisted.application import internet, service
+from twisted.internet import defer, error
 from twisted.internet.protocol import Factory, ClientFactory, connectionDone
 from twisted.protocols.basic import LineReceiver
 from twisted.protocols.policies import TimeoutMixin
 
-import util.colors as colors
-
-
-class ParseError(Exception):
-    pass
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Basic server server in Twisted.')
-    parser.add_argument('port', type=int, help='Port to listen on.')
-    parser.add_argument('service_port', type=int, help='Port on which checking service is available.')
-    parser.add_argument('-l', action='store_true', help='Run on localhost (as opposed to all).')
-    parser.add_argument('-b', '--ban', type=int, default=None, help='Max number of toxic messages until ban.')
-
-    args = parser.parse_args()
-    if args.ban and args.ban < 0:
-        raise ParseError("ban should be non-negative.")
-
-    return args
+import chat.server.util as util
+from chat.server.ai_service import AIResponse
 
 
 class ChatProtocol(LineReceiver):
@@ -39,15 +20,16 @@ class ChatProtocol(LineReceiver):
         self.state = self.REGISTER
 
     def rawDataReceived(self, data):
-        print("Raw data received!")
+        log.err('Raw data received!')
         self.transport.loseConnection()
 
     def sendLine(self, line):
         super().sendLine(line.encode('utf-8', errors='ignore'))
 
     def connectionMade(self):
+        log.msg('User connected.')
         self.sendLine('Connected to server.')
-        self.sendLine(self._get_time())
+        self.sendLine(util.get_time())
         self.sendLine('Choose a username:')
 
     def lineReceived(self, line):
@@ -59,9 +41,11 @@ class ChatProtocol(LineReceiver):
 
     def handle_register(self, name):
         if name in self.factory.users:
+            log.msg(f'Registration failure: {name}')
             self.sendLine(f'Sorry, {name} is taken. Try something else.')
             return
 
+        log.msg(f'Registration successful: {name}')
         self.name = name
         self.factory.users[name] = self
         self.state = self.CHAT
@@ -72,63 +56,61 @@ class ChatProtocol(LineReceiver):
             welcome_msg += 'Participants: {}'.format(participants)
         else:
             welcome_msg += "You're the only one here."
-        self.sendLine(self.mark(welcome_msg, colors.GREEN))
+        self.sendLine(util.mark(welcome_msg, 'GREEN'))
 
         joined_msg = f'{name} has joined the chanel.'
-        self.broadcast_message(self.mark(joined_msg, colors.GREEN))
+        self.broadcast_message(util.mark(joined_msg, 'GREEN'))
 
     @defer.inlineCallbacks
     def handle_msg(self, message):
+        log.msg(f'Message received: {message}')
         if self.factory.ban:
             scores = ''
             try:
+                log.msg(f'Getting scores for {message}')
                 scores = yield self.factory.get_scores(message, 1)
-            except failure.Failure:
-                print('Failed to get scores from ML service.')
+                log.msg('Got scores.')
+            except error.ConnectError:
+                log.err('Failed to get scores from toxic_service.')
 
-            if scores:
-                scores = scores.split(':')
-            else:
-                scores = []
-            self.handle_scores(message, scores)
+            response = AIResponse(scores)
+            self.handle_ai_response(message, response)
         else:
-            message = self._get_time() + f'<{self.name}> {message}'
+            log.msg('Broadcasting.')
+            message = util.get_time() + f'<{self.name}> {message}'
             self.broadcast_message(message)
 
-    def handle_scores(self, message, scores):
-        if not scores or all([m < 0.5 for m in map(float, scores)]):
-            message = self._get_time() + f'<{self.name}> {message}'
-            self.broadcast_message(message)
-        else:
+    def handle_ai_response(self, message, response):
+        if response.positive():
+            log.msg('Message scored positive.')
             self.warnings -= 1
             if self.warnings > 1:
-                self.sendLine(self.mark('Consider yourself warned. Shame, shame.', colors.RED))
+                self.sendLine(util.mark('Consider yourself warned. Shame on you, asshole.', 'RED'))
             elif self.warnings == 1:
-                self.sendLine(self.mark("One more and you're out.", colors.RED))
+                self.sendLine(util.mark("One more and you're out.", 'RED'))
             elif self.name in self.factory.users:
                 del self.factory.users[self.name]
-                left_msg = self.mark(f'{self.name} was kicked out.', colors.RED)
+                left_msg = util.mark(f'{self.name} was kicked out.', 'RED')
                 self.broadcast_message(left_msg)
                 self.transport.loseConnection()
+        else:
+            if response:
+                log.msg('Message scored negative.')
+            log.msg('Broadcasting.')
+            message = util.get_time() + f'<{self.name}> {message}'
+            self.broadcast_message(message)
 
     def connectionLost(self, reason=connectionDone):
+        log.msg(f'Connection lost for {self.name}')
         if self.name in self.factory.users:
             del self.factory.users[self.name]
-            left_msg = self.mark(f'{self.name} has left the channel.', colors.BLUE)
+            left_msg = util.mark(f'{self.name} has left the channel.', 'BLUE')
             self.broadcast_message(left_msg)
 
     def broadcast_message(self, message):
         for name, protocol in self.factory.users.items():
             if protocol != self:
                 protocol.sendLine(message)
-
-    @staticmethod
-    def _get_time():
-        return datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S')
-
-    @staticmethod
-    def mark(msg, color):
-        return color + msg + colors.ENDC
 
 
 class ChatFactory(Factory):
@@ -156,12 +138,12 @@ class ChatFactory(Factory):
 
 class MLClient(LineReceiver, TimeoutMixin):
     def timeoutConnection(self):
-        print('Service timeout.')
+        log.err('Service timeout.')
         self.transport.abortConnection()
         self.factory.got_scores('')
 
     def rawDataReceived(self, data):
-        print("Raw data received!")
+        log.err('Raw data received!')
         self.transport.loseConnection()
 
     def connectionMade(self):
@@ -197,19 +179,14 @@ class MLClientFactory(ClientFactory):
             d, self.deferred = self.deferred, None
             d.errback(reason)
 
+# Service setup.
+chat_port = 10000
+service_port = 10001
+iface = 'localhost'
+ban = 3
 
-def server_main(port, service_port, ban, local):
-    factory = ChatFactory(ban, service_port)
+factory = ChatFactory(ban, service_port)
+tcp_service = internet.TCPServer(chat_port, factory, interface=iface)
 
-    from twisted.internet import reactor
-    reactor.listenTCP(port, factory, interface='localhost' if local else '')
-
-if __name__ == '__main__':
-    try:
-        args = parse_args()
-        server_main(args.port, args.service_port, args.ban, args.l)
-
-        from twisted.internet import reactor
-        reactor.run()
-    except ParseError as e:
-        print(e)
+application = service.Application('chat_service')
+tcp_service.setServiceParent(application)

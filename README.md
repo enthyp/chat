@@ -1,1 +1,2 @@
-Chat app with online sentiment analysis.
+# Chat
+Chat server with online toxic message detection.
