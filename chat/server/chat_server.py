@@ -156,7 +156,7 @@ class ChatFactory(Factory):
 
 class MLClient(LineReceiver, TimeoutMixin):
     def timeoutConnection(self):
-        
+        print('Service timeout.')
         self.transport.abortConnection()
         self.factory.got_scores('')
 
