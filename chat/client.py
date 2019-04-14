@@ -1,6 +1,7 @@
 import argparse
 from twisted.internet.protocol import ClientFactory, connectionDone
 from twisted.internet import stdio
+from twisted.python import log
 from twisted.protocols.basic import LineReceiver
 import os
 
@@ -43,6 +44,11 @@ class ChatClientProtocol(LineReceiver):
 
 class ChatClientFactory(ClientFactory):
     protocol = ChatClientProtocol
+
+    def clientConnectionFailed(self, connector, reason):
+        log.err('Failed to connect: ' + reason.getErrorMessage())
+
+    clientConnectionLost = clientConnectionFailed
 
 
 def parse_args():
