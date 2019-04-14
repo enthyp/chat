@@ -1,3 +1,4 @@
+import os
 from twisted.python import log
 from twisted.application import internet, service
 from twisted.internet import defer, error
@@ -180,9 +181,9 @@ class MLClientFactory(ClientFactory):
             d.errback(reason)
 
 # Service setup.
-chat_port = 10000
+chat_port = int(os.environ.get('PORT', 8080))
 service_port = 10001
-iface = 'localhost'
+iface = ''
 ban = 3
 
 factory = ChatFactory(ban, service_port)
