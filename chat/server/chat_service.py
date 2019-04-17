@@ -86,7 +86,7 @@ class ChatProtocol(LineReceiver):
             log.msg('Message scored positive.')
             self.warnings -= 1
             if self.warnings > 1:
-                self.sendLine(util.mark('Consider yourself warned. Shame on you, asshole.', 'RED'))
+                self.sendLine(util.mark('Consider yourself warned. Shame on you.', 'RED'))
             elif self.warnings == 1:
                 self.sendLine(util.mark("One more and you're out.", 'RED'))
             elif self.name in self.factory.users:
@@ -181,9 +181,10 @@ class MLClientFactory(ClientFactory):
             d.errback(reason)
 
 # Service setup.
-chat_port = int(os.environ.get('PORT', 8080))
+# chat_port = int(os.environ.get('PORT', 8080))  # for Heroku
+chat_port = 8080
 service_port = 10001
-iface = ''
+iface = 'localhost'
 ban = 3
 
 factory = ChatFactory(ban, service_port)

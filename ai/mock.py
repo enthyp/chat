@@ -5,7 +5,7 @@ from .model import Model
 
 class Checker(Model):
     def __init__(self):
-        self.keywords = ['honkey', 'honkie']
+        self.keywords = ['foo', 'bar']
 
     def process(self, msg):
         time.sleep(1.2 * random.random())

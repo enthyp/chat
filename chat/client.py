@@ -19,9 +19,6 @@ class IOProtocol(LineReceiver):
     def lineReceived(self, line):
         self.parent.sendLine(line)
 
-    def sendLine(self, line):
-        super().sendLine(line)
-
 
 class ChatClientProtocol(LineReceiver):
     def __init__(self):
@@ -31,9 +28,6 @@ class ChatClientProtocol(LineReceiver):
     def rawDataReceived(self, data):
         print("Raw data received!")
         self.transport.loseConnection()
-
-    def sendLine(self, line):
-        super().sendLine(line)
 
     def lineReceived(self, line):
         self.io.protocol.sendLine(line)
