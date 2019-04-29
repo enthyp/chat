@@ -119,6 +119,7 @@ class ChatFactory(Factory):
 
     def __init__(self, ban, service_port):
         super().__init__()
+        self.conversations = []
         self.users = {}
         self.ban = ban is not None
         self.warnings = ban

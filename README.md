@@ -40,4 +40,5 @@ __On GitHub__ - once you have the feature ready for merge:
     `git push --delete origin feature/feature_name`  
 
 ## Notes:  
+* Before you create a new branch from chat_dev - do `git pull upstream chat_dev`.
 * If you add new dependency, e.g. `scikit-learn` - add it to `requirements.txt` and `environment.yml` files.
