@@ -33,7 +33,7 @@ class ChatClientProtocol(LineReceiver):
         self.io.protocol.sendLine(line)
 
     def connectionLost(self, reason=connectionDone):
-        print('Connection to server closed.')
+        print('Connection to chat_server closed.')
 
 
 class ChatClientFactory(ClientFactory):
@@ -46,7 +46,7 @@ class ChatClientFactory(ClientFactory):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Basic server server in Twisted.')
+    parser = argparse.ArgumentParser(description='Basic chat_server chat_server in Twisted.')
     parser.add_argument('port', type=int, help='Port to connect to.')
     parser.add_argument('host', nargs='?', default='localhost', help='Host to connect to.')
 

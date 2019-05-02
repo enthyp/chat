@@ -1,13 +1,12 @@
-import os
-from twisted.python import log
 from twisted.application import internet, service
 from twisted.internet import defer, error
 from twisted.internet.protocol import Factory, ClientFactory, connectionDone
 from twisted.protocols.basic import LineReceiver
 from twisted.protocols.policies import TimeoutMixin
+from twisted.python import log
 
-import chat.server.util as util
-from chat.server.ai_service import AIResponse
+import chat.util as util
+from chat.ai_server.ai_service import AIResponse
 
 
 class ChatProtocol(LineReceiver):
@@ -29,7 +28,7 @@ class ChatProtocol(LineReceiver):
 
     def connectionMade(self):
         log.msg('User connected.')
-        self.sendLine('Connected to server.')
+        self.sendLine('Connected to chat_server.')
         self.sendLine(util.get_time())
         self.sendLine('Choose a username:')
 
@@ -51,7 +50,7 @@ class ChatProtocol(LineReceiver):
         self.factory.users[name] = self
         self.state = self.CHAT
 
-        welcome_msg = f'Welcome to the server, {name}.\n'
+        welcome_msg = f'Welcome to the chat_server, {name}.\n'
         if len(self.factory.users) > 1:
             participants = ', '.join(self.factory.users)
             welcome_msg += 'Participants: {}'.format(participants)
