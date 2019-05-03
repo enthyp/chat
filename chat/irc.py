@@ -79,40 +79,40 @@ class IRCBase(basic.LineReceiver):
 
 
 class IRC(IRCBase):
-    # Outgoing messages.
+    # Outgoing messages (server -> client).
     def send_me_password(self):
         self.sendLine('RPL_PWD')
 
-    def registered(self):
-        self.sendLine('OK_REG')
+    def registered(self, nick, mail, password):
+        self.sendLine(f'OK_REG {nick} {mail} {password}')
 
-    def taken(self, what='nick'):
+    def taken(self, value, what='nick'):
         if what == 'nick':
-            self.sendLine('ERR_TAKEN nick')
+            self.sendLine(f'ERR_TAKEN nick {value}')
         elif what == 'mail':
-            self.sendLine('ERR_TAKEN mail')
+            self.sendLine(f'ERR_TAKEN mail {value}')
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
-    def reg_clashed(self, what='nick'):
+    def reg_clashed(self, value, what='nick'):
         if what == 'nick':
-            self.sendLine('ERR_CLASH_REG nick')
+            self.sendLine(f'ERR_CLASH_REG nick {value}')
         elif what == 'mail':
-            self.sendLine('ERR_CLASH_REG mail')
+            self.sendLine(f'ERR_CLASH_REG mail {value}')
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
-    def unregistered(self):
-        self.sendLine('OK_UNREG')
+    def unregistered(self, nick):
+        self.sendLine(f'OK_UNREG {nick}')
 
-    def logged_in(self):
-        self.sendLine('OK_LOGIN')
+    def logged_in(self, nick):
+        self.sendLine(f'OK_LOGIN {nick}')
 
-    def login_clashed(self):
-        self.sendLine('ERR_CLASH_LOGIN')
+    def login_clashed(self, nick):
+        self.sendLine(f'ERR_CLASH_LOGIN {nick}')
 
-    def logged_out(self):
-        self.sendLine('OK_LOGOUT')
+    def logged_out(self, nick):
+        self.sendLine(f'OK_LOGOUT {nick}')
 
     def list(self, channels):
         channels = ' '.join(channels)
@@ -126,9 +126,9 @@ class IRC(IRCBase):
         users = ' '.join(users)
         self.sendLine(f'RPL_NAMES {channel} {users}')
 
-    def created(self, channel, users):
+    def created(self, channel, creator, users):
         users = ' '.join(users)
-        self.sendLine(f'OK_CREATED {channel} {users}')
+        self.sendLine(f'OK_CREATED {channel} {creator} {users}')
 
     def channel_exists(self, channel):
         self.sendLine(f'ERR_EXISTS {channel}')
@@ -175,11 +175,21 @@ class IRC(IRCBase):
     def user_kicked(self, channel, user):
         self.sendLine(f'KICKED {channel} {user}')
 
-    def msg(self, from_user, content):
-        self.sendLine(f':{from_user} MSG :{content}')
+    def msg(self, from_user, channel, content):
+        self.sendLine(f':{from_user} MSG {channel} :{content}')
 
     def notify(self, reason, notification):
         self.sendLine(f'NOTIFY {reason} :{notification}')
+
+    # Outgoing messages (server -> server).
+    def connect(self, password):
+        self.sendLine(f'CONNECT {password}')
+
+    def disconnect(self):
+        self.sendLine('DISCONNECT')
+
+    def sync(self):
+        self.sendLine('SYNC')
 
 
 class IRCClient(IRCBase):
@@ -247,14 +257,14 @@ class IRCClient(IRCBase):
         self.registered()
 
     def irc_ERR_TAKEN(self, message):
-        what = message.params[0]
+        what = message.params[1]
         if what == 'nick':
             self.nick_taken()
         else:
             self.mail_in_use()
 
     def irc_ERR_CLASH_REG(self, message):
-        what = message.params[0]
+        what = message.params[1]
         if what == 'nick':
             self.nick_clash()
         else:
@@ -290,7 +300,7 @@ class IRCClient(IRCBase):
     # Channel creation.
     def irc_OK_CREATED(self, message):
         channel = message.params[0]
-        users = message.params[1:]
+        users = message.params[2:]
         self.channel_created(channel, users)
 
     def irc_ERR_EXISTS(self, message):
@@ -366,8 +376,9 @@ class IRCClient(IRCBase):
     # Others.
     def irc_MSG(self, message):
         from_user = message.prefix
-        content = message.params[0]
-        self.got_message(from_user, content)
+        channel = message.params[0]
+        content = message.params[1]
+        self.got_message(from_user, channel, content)
 
     def irc_NOTIFY(self, message):
         # TODO: different notification types (reasons)?
@@ -435,7 +446,7 @@ class IRCClient(IRCBase):
     def no_channel(self, channel):
         pass
 
-    def no_perms(self, type, reason):
+    def no_perms(self, perm_type, reason):
         pass
 
     # Joining/leaving channels.
@@ -469,7 +480,7 @@ class IRCClient(IRCBase):
         pass
 
     # Others.
-    def got_message(self, from_user, content):
+    def got_message(self, from_user, channel, content):
         pass
 
     def notified(self, reason, notification):
