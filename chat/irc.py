@@ -43,20 +43,47 @@ class IRCMessage:
         return string
 
 
-class IRC(basic.LineReceiver):
-    def handle_command(self, command):
-        pass
-
+class IRCBase(basic.LineReceiver):
+    # Low-level protocol methods.
     def lineReceived(self, line):
         line = line.decode('utf-8', errors='ignore')
-        self.handle_command(line)
+        try:
+            message = IRCMessage(line)
+            self.handle_message(message)
+        except IRCBadMessage as e:
+            self.bad_message(line, e)
 
     def sendLine(self, line):
         line = line.encode('utf-8', errors='ignore')
         super().sendLine(line)
 
+    # Initial handling.
+    def handle_message(self, message):
+        method_name = f'irc_{message.command}'
+        method = getattr(self, method_name, None)
 
-class IRCClient(basic.LineReceiver):
+        if method is None:
+            self.irc_unknown(message)
+        else:
+            method(message)
+
+    @staticmethod
+    def irc_unknown(message):
+        cmd = message.command
+        params = ' '.join(message.params)
+        log.err(f'Unknown command: {cmd} with params: {params}')
+
+    @staticmethod
+    def bad_message(line, exception):
+        log.err(f'Exception: {str(exception)} caused by line: {line}')
+
+
+class IRC(IRCBase):
+    # Outgoing messages.
+    def 
+
+
+class IRCClient(IRCBase):
     # Outgoing commands.
     def register(self, nick, mail):
         self.sendLine(f'REGISTER {nick} {mail}')
@@ -113,15 +140,6 @@ class IRCClient(basic.LineReceiver):
         self.sendLine(f'MSG {channel} :{content}')
 
     # Incoming commands.
-    def handle_message(self, message):
-        method_name = f'irc_{message.command}'
-        method = getattr(self, method_name, None)
-
-        if method is None:
-            self.irc_unknown(message)
-        else:
-            method(message)
-
     # Registration.
     def irc_RPL_PWD(self, _):
         self.password_requested()
@@ -352,26 +370,3 @@ class IRCClient(basic.LineReceiver):
 
     def notified(self, reason, notification):
         pass
-
-    @staticmethod
-    def irc_unknown(message):
-        cmd = message.command
-        params = ' '.join(message.params)
-        log.err(f'Unknown command: {cmd} with params: {params}')
-
-    @staticmethod
-    def bad_message(line, exception):
-        log.err(f'Exception: {str(exception)} caused by line: {line}')
-
-    # Low-level protocol methods.
-    def lineReceived(self, line):
-        line = line.decode('utf-8', errors='ignore')
-        try:
-            message = IRCMessage(line)
-            self.handle_message(message)
-        except IRCBadMessage as e:
-            self.bad_message(line, e)
-
-    def sendLine(self, line):
-        line = line.encode('utf-8', errors='ignore')
-        super().sendLine(line)
