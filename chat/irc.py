@@ -80,7 +80,106 @@ class IRCBase(basic.LineReceiver):
 
 class IRC(IRCBase):
     # Outgoing messages.
-    def 
+    def send_me_password(self):
+        self.sendLine('RPL_PWD')
+
+    def registered(self):
+        self.sendLine('OK_REG')
+
+    def taken(self, what='nick'):
+        if what == 'nick':
+            self.sendLine('ERR_TAKEN nick')
+        elif what == 'mail':
+            self.sendLine('ERR_TAKEN mail')
+        else:
+            raise ValueError('"what" parameter must be either "nick" or "mail".')
+
+    def reg_clashed(self, what='nick'):
+        if what == 'nick':
+            self.sendLine('ERR_CLASH_REG nick')
+        elif what == 'mail':
+            self.sendLine('ERR_CLASH_REG mail')
+        else:
+            raise ValueError('"what" parameter must be either "nick" or "mail".')
+
+    def unregistered(self):
+        self.sendLine('OK_UNREG')
+
+    def logged_in(self):
+        self.sendLine('OK_LOGIN')
+
+    def login_clashed(self):
+        self.sendLine('ERR_CLASH_LOGIN')
+
+    def logged_out(self):
+        self.sendLine('OK_LOGOUT')
+
+    def list(self, channels):
+        channels = ' '.join(channels)
+        self.sendLine(f'RPL_LIST {channels}')
+
+    def is_on(self, users):
+        users = ' '.join(users)
+        self.sendLine(f'RPL_ISON {users}')
+
+    def names(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'RPL_NAMES {channel} {users}')
+
+    def created(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'OK_CREATED {channel} {users}')
+
+    def channel_exists(self, channel):
+        self.sendLine(f'ERR_EXISTS {channel}')
+
+    def channel_clashed(self, channel):
+        self.sendLine(f'ERR_CLASH_CREAT {channel}')
+
+    def channel_deleted(self, channel):
+        self.sendLine(f'OK_DELETED {channel}')
+
+    def no_channel(self, channel):
+        self.sendLine(f'ERR_NOCHANNEL {channel}')
+
+    def no_perms(self, perm_type, reason):
+        self.sendLine(f'ERR_NO_PERM {perm_type} :{reason}')
+
+    def joined(self, channel):
+        self.sendLine(f'OK_JOINED {channel}')
+
+    def user_joined(self, channel, user):
+        self.sendLine(f'JOINED {channel} {user}')
+
+    def left(self, channel):
+        self.sendLine(f'OK_LEFT {channel}')
+
+    def user_left(self, channel, user):
+        self.sendLine(f'LEFT {channel} {user}')
+
+    def quit(self, channel):
+        self.sendLine(f'OK_QUIT {channel}')
+
+    def user_quit(self, channel, user):
+        self.sendLine(f'QUIT {channel} {user}')
+
+    def added(self, channel):
+        self.sendLine(f'OK_ADDED {channel}')
+
+    def no_user(self, user):
+        self.sendLine(f'ERR_NOUSER {user}')
+
+    def kicked(self, channel, user):
+        self.sendLine(f'OK_KICKED {channel} {user}')
+
+    def user_kicked(self, channel, user):
+        self.sendLine(f'KICKED {channel} {user}')
+
+    def msg(self, from_user, content):
+        self.sendLine(f':{from_user} MSG :{content}')
+
+    def notify(self, reason, notification):
+        self.sendLine(f'NOTIFY {reason} :{notification}')
 
 
 class IRCClient(IRCBase):
@@ -212,7 +311,9 @@ class IRCClient(IRCBase):
         self.no_channel(channel)
 
     def irc_ERR_NOPERM(self, message):
-        pass
+        perm_type = message.params[0]
+        reason = message.params[1]
+        self.no_perms(perm_type, reason)
 
     # Joining/leaving channels.
     def irc_OK_JOINED(self, message):
@@ -265,13 +366,13 @@ class IRCClient(IRCBase):
     # Others.
     def irc_MSG(self, message):
         from_user = message.prefix
-        content = message.params[-1]
+        content = message.params[0]
         self.got_message(from_user, content)
 
     def irc_NOTIFY(self, message):
         # TODO: different notification types (reasons)?
         reason = message.params[0]
-        notification = message.params[-1]
+        notification = message.params[1]
         self.notified(reason, notification)
 
     # Endpoints to implement client reactions.
@@ -332,6 +433,9 @@ class IRCClient(IRCBase):
         pass
 
     def no_channel(self, channel):
+        pass
+
+    def no_perms(self, type, reason):
         pass
 
     # Joining/leaving channels.
