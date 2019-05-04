@@ -80,13 +80,13 @@ class IRCBase(basic.LineReceiver):
 
 class IRC(IRCBase):
     # Outgoing messages (server -> client).
-    def send_me_password(self):
+    def send_me_password(self):  # ok
         self.sendLine('RPL_PWD')
 
-    def registered(self, nick, mail, password):
+    def registered(self, nick, mail, password):  # ok
         self.sendLine(f'OK_REG {nick} {mail} {password}')
 
-    def taken(self, value, what='nick'):
+    def taken(self, value, what='nick'):  # ok
         if what == 'nick':
             self.sendLine(f'ERR_TAKEN nick {value}')
         elif what == 'mail':
@@ -94,7 +94,7 @@ class IRC(IRCBase):
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
-    def reg_clashed(self, value, what='nick'):
+    def reg_clashed(self, value, what='nick'):  # ok
         if what == 'nick':
             self.sendLine(f'ERR_CLASH_REG nick {value}')
         elif what == 'mail':
@@ -102,16 +102,16 @@ class IRC(IRCBase):
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
-    def unregistered(self, nick):
-        self.sendLine(f'OK_UNREG {nick}')
+    def unregistered(self, user):  # ok
+        self.sendLine(f'OK_UNREG {user}')
 
-    def logged_in(self, nick):
-        self.sendLine(f'OK_LOGIN {nick}')
+    def logged_in(self, user):  # ok
+        self.sendLine(f'OK_LOGIN {user}')
 
-    def login_clashed(self, nick):
-        self.sendLine(f'ERR_CLASH_LOGIN {nick}')
+    def login_clashed(self, user):  # ok
+        self.sendLine(f'ERR_CLASH_LOGIN {user}')
 
-    def logged_out(self, nick):
+    def logged_out(self, nick):  # ok
         self.sendLine(f'OK_LOGOUT {nick}')
 
     def list(self, channels):
@@ -199,7 +199,7 @@ class IRC(IRCBase):
         self.sendLine('SYNC')
 
     # Incoming commands.
-    def irc_REGISTER(self, message):
+    def irc_REGISTER(self, message):  # ok
         user, mail = message.params
         self.register_user(user, mail)
 
@@ -207,18 +207,18 @@ class IRC(IRCBase):
         user, mail, password = message.params
         self.on_user_registered(user, mail, password)
 
-    def irc_ERR_CLASH_REG(self, message):
+    def irc_ERR_CLASH_REG(self, message):  # ok
         what, value = message.params
         if what in ('nick', 'mail'):
             self.on_reg_clashed(what, value)
         else:
             log.err(f'ERR_CLASH_REG message with incorrect reason: {what}')
 
-    def irc_OK_UNREG(self, message):
+    def irc_OK_UNREG(self, message):  # ok
         user = message.params[0]
         self.on_user_unregistered(user)
 
-    def irc_LOGIN(self, message):
+    def irc_LOGIN(self, message):  # ok
         user = message.params[0]
         self.login_user(user)
 
@@ -226,18 +226,18 @@ class IRC(IRCBase):
         user = message.params[0]
         self.on_user_logged_in(user)
 
-    def irc_ERR_CLASH_LOGIN(self, message):
+    def irc_ERR_CLASH_LOGIN(self, message):  # ok
         user = message.params[0]
         self.on_login_clashed(user)
 
-    def irc_PASSWORD(self, message):
+    def irc_PASSWORD(self, message):  # ok
         password = message.params[0]
         self.password_received(password)
 
-    def irc_UNREGISTER(self, _):
+    def irc_UNREGISTER(self, _):  # ok
         self.unregister_user()
 
-    def irc_LOGOUT(self, _):
+    def irc_LOGOUT(self, _):  # ok
         self.logout_user()
 
     def irc_OK_LOGOUT(self, message):
@@ -341,7 +341,7 @@ class IRC(IRCBase):
         self.sync_requested()
 
     # Endpoints to implement server reactions.
-    def register_user(self, user, mail):
+    def register_user(self, user, mail):  # ok
         pass
 
     def on_user_registered(self, user, mail, password):
@@ -362,7 +362,7 @@ class IRC(IRCBase):
     def on_login_clashed(self, user):
         pass
 
-    def password_received(self, password):
+    def password_received(self, password):  # ok
         pass
 
     def unregister_user(self):
@@ -443,19 +443,19 @@ class IRC(IRCBase):
 
 class IRCClient(IRCBase):
     # Outgoing commands.
-    def register(self, nick, mail):
-        self.sendLine(f'REGISTER {nick} {mail}')
+    def register(self, user, mail):  # ok
+        self.sendLine(f'REGISTER {user} {mail}')
 
-    def login(self, nick):
-        self.sendLine(f'LOGIN {nick}')
+    def login(self, user):  # ok
+        self.sendLine(f'LOGIN {user}')
 
-    def password(self, password):
+    def password(self, password):  # ok
         self.sendLine(f'PASSWORD {password}')
 
-    def unregister(self):
+    def unregister(self):  # ok
         self.sendLine('UNREGISTER')
 
-    def logout(self):
+    def logout(self):  # ok
         self.sendLine('LOGOUT')
 
     def list(self):
@@ -500,37 +500,37 @@ class IRCClient(IRCBase):
 
     # Incoming commands.
     # Registration.
-    def irc_RPL_PWD(self, _):
+    def irc_RPL_PWD(self, _):  # ok
         self.password_requested()
 
-    def irc_OK_REG(self, _):
+    def irc_OK_REG(self, _):  # ok
         self.registered()
 
-    def irc_ERR_TAKEN(self, message):
-        what = message.params[1]
+    def irc_ERR_TAKEN(self, message):  # ok
+        what = message.params[0]
         if what == 'nick':
             self.nick_taken()
         else:
             self.mail_in_use()
 
-    def irc_ERR_CLASH_REG(self, message):
-        what = message.params[1]
+    def irc_ERR_CLASH_REG(self, message):  # ok
+        what = message.params[0]
         if what == 'nick':
             self.nick_clash()
         else:
             self.mail_clash()
 
-    def irc_OK_UNREG(self, _):
+    def irc_OK_UNREG(self, _):  # ok
         self.unregistered()
 
     # Login.
-    def irc_OK_LOGIN(self, _):
+    def irc_OK_LOGIN(self, _):  # ok
         self.logged_in()
 
-    def irc_ERR_CLASH_LOGIN(self, _):
+    def irc_ERR_CLASH_LOGIN(self, _):  # ok
         self.login_clash()
 
-    def irc_OK_LOGOUT(self, _):
+    def irc_OK_LOGOUT(self, _):  # ok
         self.logged_out()
 
     # Info.
