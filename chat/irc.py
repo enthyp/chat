@@ -161,19 +161,26 @@ class IRC(IRCBase):
         self.sendLine(f'OK_QUIT {channel}')
 
     def user_quit(self, channel, user):
-        self.sendLine(f'QUIT {channel} {user}')
+        self.sendLine(f'USER_QUIT {channel} {user}')
 
-    def added(self, channel):
-        self.sendLine(f'OK_ADDED {channel}')
+    def added(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'OK_ADDED {channel} {users}')
+
+    def users_added(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'ADDED {channel} {users}')
 
     def no_user(self, user):
         self.sendLine(f'ERR_NOUSER {user}')
 
-    def kicked(self, channel, user):
-        self.sendLine(f'OK_KICKED {channel} {user}')
+    def kicked(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'OK_KICKED {channel} {users}')
 
-    def user_kicked(self, channel, user):
-        self.sendLine(f'KICKED {channel} {user}')
+    def user_kicked(self, channel, users):
+        users = ' '.join(users)
+        self.sendLine(f'KICKED {channel} {users}')
 
     def msg(self, from_user, channel, content):
         self.sendLine(f':{from_user} MSG {channel} :{content}')
@@ -190,6 +197,248 @@ class IRC(IRCBase):
 
     def sync(self):
         self.sendLine('SYNC')
+
+    # Incoming commands.
+    def irc_REGISTER(self, message):
+        user, mail = message.params
+        self.register_user(user, mail)
+
+    def irc_OK_REG(self, message):
+        user, mail, password = message.params
+        self.on_user_registered(user, mail, password)
+
+    def irc_ERR_CLASH_REG(self, message):
+        what, value = message.params
+        if what in ('nick', 'mail'):
+            self.on_reg_clashed(what, value)
+        else:
+            log.err(f'ERR_CLASH_REG message with incorrect reason: {what}')
+
+    def irc_OK_UNREG(self, message):
+        user = message.params[0]
+        self.on_user_unregistered(user)
+
+    def irc_LOGIN(self, message):
+        user = message.params[0]
+        self.login_user(user)
+
+    def irc_OK_LOGIN(self, message):
+        user = message.params[0]
+        self.on_user_logged_in(user)
+
+    def irc_ERR_CLASH_LOGIN(self, message):
+        user = message.params[0]
+        self.on_login_clashed(user)
+
+    def irc_PASSWORD(self, message):
+        password = message.params[0]
+        self.password_received(password)
+
+    def irc_UNREGISTER(self, _):
+        self.unregister_user()
+
+    def irc_LOGOUT(self, _):
+        self.logout_user()
+
+    def irc_OK_LOGOUT(self, message):
+        user = message.params[0]
+        self.on_user_logged_out(user)
+
+    def irc_LIST(self, _):
+        self.get_channel_list()
+
+    def irc_ISON(self, message):
+        users = message.params
+        self.get_users_status(users)
+
+    def irc_CREATE(self, message):
+        channel, mode = message.params[:2]
+        if mode in ('priv', 'pub'):
+            users = message.params[2:]
+            self.create_channel(channel, mode == 'priv', users)
+        else:
+            log.err(f'CREATE message with incorrect mode: {mode}')
+
+    def irc_OK_CREATED(self, message):
+        channel, creator = message.params[:2]
+        users = message.params[2:]
+        self.on_channel_created(channel, creator, users)
+
+    def irc_ERR_CLASH_CREAT(self, message):
+        channel = message.params[0]
+        self.on_creation_clashed(channel)
+
+    def irc_DELETE(self, message):
+        channel = message.params[0]
+        self.delete_channel(channel)
+
+    def irc_OK_DELETED(self, message):
+        channel = message.params[0]
+        self.on_channel_deleted(channel)
+
+    def irc_JOIN(self, message):
+        channel = message.params[0]
+        self.join_channel(channel)
+
+    def irc_JOINED(self, message):
+        channel, user = message.params
+        self.on_user_joined(channel, user)
+
+    def irc_LEAVE(self, message):
+        channel = message.params[0]
+        self.leave_channel(channel)
+
+    def irc_LEFT(self, message):
+        channel, user = message.params
+        self.on_user_left(channel, user)
+
+    def irc_QUIT(self, message):
+        channel = message.params[0]
+        self.quit_channel(channel)
+
+    def irc_USER_QUIT(self, message):
+        channel, user = message.params
+        self.on_user_quit(channel, user)
+
+    def irc_ADD(self, message):
+        channel = message.params[0]
+        users = message.params[1:]
+        self.add_to_channel(channel, users)
+
+    def irc_ADDED(self, message):
+        channel = message.params[0]
+        users = message.params[1:]
+        self.on_users_added(channel, users)
+
+    def irc_KICK(self, message):
+        channel = message.params[0]
+        users = message.params[1:]
+        self.kick_from_channel(channel, users)
+
+    def irc_KICKED(self, message):
+        channel = message.params[0]
+        users = message.params[1:]
+        self.on_user_kicked(channel, users)
+
+    def irc_NAMES(self, message):
+        channel = message.params[0]
+        self.get_users_on_channel(channel)
+
+    def irc_MSG(self, message):
+        from_user = message.prefix
+        channel = message.params[0]
+        content = message.params[1]
+        self.message_received(from_user, channel, content)
+
+    def irc_CONNECT(self, message):
+        password = message.params[0]
+        self.server_connected(password)
+
+    def irc_DISCONNECT(self, _):
+        self.server_disconnected()
+
+    def irc_SYNC(self, _):
+        self.sync_requested()
+
+    # Endpoints to implement server reactions.
+    def register_user(self, user, mail):
+        pass
+
+    def on_user_registered(self, user, mail, password):
+        pass
+
+    def on_reg_clashed(self, what, value):
+        pass
+
+    def on_user_unregistered(self, user):
+        pass
+
+    def login_user(self, user):
+        pass
+
+    def on_user_logged_in(self, user):
+        pass
+
+    def on_login_clashed(self, user):
+        pass
+
+    def password_received(self, password):
+        pass
+
+    def unregister_user(self):
+        pass
+
+    def logout_user(self):
+        pass
+
+    def on_user_logged_out(self, user):
+        pass
+
+    def get_channel_list(self):
+        pass
+
+    def get_users_status(self, users):
+        pass
+
+    def create_channel(self, channel, private, users):
+        pass
+
+    def on_channel_created(self, channel, creator, users):
+        pass
+
+    def on_creation_clashed(self, channel):
+        pass
+
+    def delete_channel(self, channel):
+        pass
+
+    def on_channel_deleted(self, channel):
+        pass
+
+    def join_channel(self, channel):
+        pass
+
+    def on_user_joined(self, channel, user):
+        pass
+
+    def leave_channel(self, channel):
+        pass
+
+    def on_user_left(self, channel, user):
+        pass
+
+    def quit_channel(self, channel):
+        pass
+
+    def on_user_quit(self, channel, user):
+        pass
+
+    def add_to_channel(self, channel, users):
+        pass
+
+    def on_users_added(self, channel, users):
+        pass
+
+    def kick_from_channel(self, channel, users):
+        pass
+
+    def on_users_kicked(self, channel, users):
+        pass
+
+    def get_users_on_channel(self, channel):
+        pass
+
+    def message_received(self, from_user, channel, content):
+        pass
+
+    def server_connected(self, password):
+        pass
+
+    def server_disconnected(self):
+        pass
+
+    def sync_requested(self):
+        pass
 
 
 class IRCClient(IRCBase):
@@ -234,6 +483,7 @@ class IRCClient(IRCBase):
         channel_list = ' '.join(channels)
         self.sendLine(f'QUIT {channel_list}')
 
+    # TODO: add invites to public channels!
     def add(self, channel, nicks):
         nick_list = ' '.join(nicks)
         self.sendLine(f'ADD {channel} {nick_list}')
