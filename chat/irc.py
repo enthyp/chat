@@ -1,9 +1,9 @@
-# Based on twisted.words.irc
+# Partially based on twisted.words.irc
 from twisted.protocols import basic
 from twisted.python import log
 
 
-class IRCBadMessage(Exception):
+class IRCBadMessageFormat(Exception):
     """Incorrect message format."""
     pass
 
@@ -18,7 +18,7 @@ class IRCMessage:
     @staticmethod
     def _parse_message(string):
         if not string:
-            raise IRCBadMessage('Empty string.')
+            raise IRCBadMessageFormat('Empty string.')
 
         prefix, trailing = '', ''
         if string[0] == ':':
@@ -27,7 +27,7 @@ class IRCMessage:
             string, trailing = string.split(':', 1)
 
         if not string:
-            raise IRCBadMessage('No command.')
+            raise IRCBadMessageFormat('No command.')
 
         args = string.split()
         if trailing:
@@ -43,42 +43,67 @@ class IRCMessage:
         return string
 
 
-class IRCBase(basic.LineReceiver):
+class IRCBaseProtocol(basic.LineReceiver):
+
+    delimiter = '\n'.encode('utf-8')
+
+    def connectionMade(self):
+        super().connectionMade()
+        log.msg('Connected.')
+
+    def connectionLost(self, reason):
+        super().connectionMade()
+        log.msg('Connection lost.')
+
+    @property
+    def endpoint(self):
+        return self._endpoint
+
+    @endpoint.setter
+    def endpoint(self, endpoint):
+        self._endpoint = endpoint
+
     # Low-level protocol methods.
     def lineReceived(self, line):
         line = line.decode('utf-8', errors='ignore')
         try:
             message = IRCMessage(line)
-            self.handle_message(message)
-        except IRCBadMessage as e:
-            self.bad_message(line, e)
+            self.endpoint.handle_message(message)
+        except IRCBadMessageFormat as e:
+            log.err(f'ERR: Exception: {str(e)} caused by line: {line}')
 
     def sendLine(self, line):
         line = line.encode('utf-8', errors='ignore')
         super().sendLine(line)
 
-    # Initial handling.
+
+class IRCEndpoint:
+    def __init__(self, protocol):
+        self._protocol = protocol
+
+    def sendLine(self, line):
+        self._protocol.sendLine(line)
+
     def handle_message(self, message):
         method_name = f'irc_{message.command}'
         method = getattr(self, method_name, None)
 
-        if method is None:
-            self.irc_unknown(message)
-        else:
-            method(message)
+        try:
+            if method is None:
+                self.irc_unknown(message)
+            else:
+                method(message)
+        except Exception as e:
+            log.err(f'ERR: Exception: {str(e)} in method call {method.__name__}')
 
     @staticmethod
     def irc_unknown(message):
         cmd = message.command
         params = ' '.join(message.params)
-        log.err(f'Unknown command: {cmd} with params: {params}')
-
-    @staticmethod
-    def bad_message(line, exception):
-        log.err(f'Exception: {str(exception)} caused by line: {line}')
+        log.err(f'ERR: Unknown command: {cmd} with params: {params}')
 
 
-class IRC(IRCBase):
+class IRC(IRCEndpoint):
     # Outgoing messages (server -> client).
     def send_me_password(self):  # ok
         self.sendLine('RPL_PWD')
@@ -102,6 +127,9 @@ class IRC(IRCBase):
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
+    def internal_error(self, communicate):
+        self.sendLine(f'ERR_INTERNAL :{communicate}')
+
     def unregistered(self, user):  # ok
         self.sendLine(f'OK_UNREG {user}')
 
@@ -111,14 +139,17 @@ class IRC(IRCBase):
     def login_clashed(self, user):  # ok
         self.sendLine(f'ERR_CLASH_LOGIN {user}')
 
+    def wrong_password(self):
+        self.sendLine('ERR_BAD_PASSWORD')
+
     def logged_out(self, nick):  # ok
         self.sendLine(f'OK_LOGOUT {nick}')
 
-    def list(self, channels):
+    def list(self, channels):  # ok
         channels = ' '.join(channels)
         self.sendLine(f'RPL_LIST {channels}')
 
-    def is_on(self, users):
+    def is_on(self, users):  # ok
         users = ' '.join(users)
         self.sendLine(f'RPL_ISON {users}')
 
@@ -188,6 +219,12 @@ class IRC(IRCBase):
     def notify(self, reason, notification):
         self.sendLine(f'NOTIFY {reason} :{notification}')
 
+    def warn(self, warning):
+        self.sendLine(f'WARN :{warning}')
+
+    def connection_closed(self, message):
+        self.sendLine(f'CLOSED :{message}')
+
     # Outgoing messages (server -> server).
     def connect(self, password):
         self.sendLine(f'CONNECT {password}')
@@ -198,8 +235,10 @@ class IRC(IRCBase):
     def sync(self):
         self.sendLine('SYNC')
 
+    # TODO: handle incomplete parameters?
     # Incoming commands.
     def irc_REGISTER(self, message):  # ok
+        # TODO: check if user and mail are syntactically correct?
         user, mail = message.params
         self.register_user(user, mail)
 
@@ -212,7 +251,7 @@ class IRC(IRCBase):
         if what in ('nick', 'mail'):
             self.on_reg_clashed(what, value)
         else:
-            log.err(f'ERR_CLASH_REG message with incorrect reason: {what}')
+            log.err(f'ERR: ERR_CLASH_REG message with incorrect reason: {what}')
 
     def irc_OK_UNREG(self, message):  # ok
         user = message.params[0]
@@ -222,7 +261,7 @@ class IRC(IRCBase):
         user = message.params[0]
         self.login_user(user)
 
-    def irc_OK_LOGIN(self, message):
+    def irc_OK_LOGIN(self, message):  # ok
         user = message.params[0]
         self.on_user_logged_in(user)
 
@@ -240,14 +279,14 @@ class IRC(IRCBase):
     def irc_LOGOUT(self, _):  # ok
         self.logout_user()
 
-    def irc_OK_LOGOUT(self, message):
+    def irc_OK_LOGOUT(self, message):  # ok
         user = message.params[0]
         self.on_user_logged_out(user)
 
-    def irc_LIST(self, _):
+    def irc_LIST(self, _):  # ok
         self.get_channel_list()
 
-    def irc_ISON(self, message):
+    def irc_ISON(self, message):  # ok
         users = message.params
         self.get_users_status(users)
 
@@ -257,7 +296,7 @@ class IRC(IRCBase):
             users = message.params[2:]
             self.create_channel(channel, mode == 'priv', users)
         else:
-            log.err(f'CREATE message with incorrect mode: {mode}')
+            log.err(f'ERR: CREATE message with incorrect mode: {mode}')
 
     def irc_OK_CREATED(self, message):
         channel, creator = message.params[:2]
@@ -318,7 +357,7 @@ class IRC(IRCBase):
     def irc_KICKED(self, message):
         channel = message.params[0]
         users = message.params[1:]
-        self.on_user_kicked(channel, users)
+        self.on_users_kicked(channel, users)
 
     def irc_NAMES(self, message):
         channel = message.params[0]
@@ -353,10 +392,10 @@ class IRC(IRCBase):
     def on_user_unregistered(self, user):
         pass
 
-    def login_user(self, user):
+    def login_user(self, user):  # ok
         pass
 
-    def on_user_logged_in(self, user):
+    def on_user_logged_in(self, user):  # ok
         pass
 
     def on_login_clashed(self, user):
@@ -374,10 +413,10 @@ class IRC(IRCBase):
     def on_user_logged_out(self, user):
         pass
 
-    def get_channel_list(self):
+    def get_channel_list(self):  # ok
         pass
 
-    def get_users_status(self, users):
+    def get_users_status(self, users):  # ok
         pass
 
     def create_channel(self, channel, private, users):
@@ -441,7 +480,7 @@ class IRC(IRCBase):
         pass
 
 
-class IRCClient(IRCBase):
+class IRCClient(IRCEndpoint):
     # Outgoing commands.
     def register(self, user, mail):  # ok
         self.sendLine(f'REGISTER {user} {mail}')
@@ -458,10 +497,10 @@ class IRCClient(IRCBase):
     def logout(self):  # ok
         self.sendLine('LOGOUT')
 
-    def list(self):
+    def list(self):  # ok
         self.sendLine('LIST')
 
-    def is_on(self, nicks):
+    def is_on(self, nicks):  # ok
         nick_list = ' '.join(nicks)
         self.sendLine(f'ISON {nick_list}')
 
@@ -520,6 +559,10 @@ class IRCClient(IRCBase):
         else:
             self.mail_clash()
 
+    def irc_ERR_INTERNAL(self, message):
+        communicate = message.params[0]
+        self.server_error(communicate)
+
     def irc_OK_UNREG(self, _):  # ok
         self.unregistered()
 
@@ -530,15 +573,18 @@ class IRCClient(IRCBase):
     def irc_ERR_CLASH_LOGIN(self, _):  # ok
         self.login_clash()
 
+    def irc_ERR_BAD_PASSWORD(self):
+        self.bad_password()
+
     def irc_OK_LOGOUT(self, _):  # ok
         self.logged_out()
 
     # Info.
-    def irc_RPL_LIST(self, message):
+    def irc_RPL_LIST(self, message):  # ok
         channels = message.params
         self.channels_available(channels)
 
-    def irc_RPL_ISON(self, message):
+    def irc_RPL_ISON(self, message):  # ok
         users = message.params
         self.users_online(users)
 
@@ -636,6 +682,14 @@ class IRCClient(IRCBase):
         notification = message.params[1]
         self.notified(reason, notification)
 
+    def irc_WARN(self, message):
+        warning = message.params[0]
+        self.warned(warning)
+
+    def irc_CLOSED(self, message):
+        communicate = message.params[0]
+        self.connection_closed(communicate)
+
     # Endpoints to implement client reactions.
     # Registration.
     def password_requested(self):
@@ -656,6 +710,9 @@ class IRCClient(IRCBase):
     def mail_clash(self):
         pass
 
+    def server_error(self, communicate):
+        pass
+
     def unregistered(self):
         pass
 
@@ -666,14 +723,17 @@ class IRCClient(IRCBase):
     def login_clash(self):
         pass
 
+    def bad_password(self):
+        pass
+
     def logged_out(self):
         pass
 
     # Info.
-    def channels_available(self, channels):
+    def channels_available(self, channels):  # ok
         pass
 
-    def users_online(self, users):
+    def users_online(self, users):  # ok
         pass
 
     def users_on_channel(self, users, channel):
@@ -734,4 +794,10 @@ class IRCClient(IRCBase):
         pass
 
     def notified(self, reason, notification):
+        pass
+
+    def warned(self, warning):
+        pass
+
+    def connection_closed(self, communicate):
         pass

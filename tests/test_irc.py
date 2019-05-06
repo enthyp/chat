@@ -24,12 +24,12 @@ def test_IRCMessage_ERR_TAKEN():
 
 
 def test_IRCMessage_empty():
-    with pytest.raises(irc.IRCBadMessage) as e:
+    with pytest.raises(irc.IRCBadMessageFormat) as e:
         irc.IRCMessage('')
     assert 'Empty string.' in str(e)
 
 
 def test_IRCMessage_no_command():
-    with pytest.raises(irc.IRCBadMessage) as e:
+    with pytest.raises(irc.IRCBadMessageFormat) as e:
         irc.IRCMessage(':prefix :bad_command param1 param2')
     assert 'No command.' in str(e)
