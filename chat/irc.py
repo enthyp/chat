@@ -47,14 +47,6 @@ class IRCBaseProtocol(basic.LineReceiver):
 
     delimiter = '\n'.encode('utf-8')
 
-    def connectionMade(self):
-        super().connectionMade()
-        log.msg('Connected.')
-
-    def connectionLost(self, reason):
-        super().connectionMade()
-        log.msg('Connection lost.')
-
     @property
     def endpoint(self):
         return self._endpoint

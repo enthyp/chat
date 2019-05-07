@@ -1,4 +1,5 @@
 import sqlite3
+from functools import wraps
 from twisted.python import log, failure
 from twisted.internet import defer
 from twisted.application import service
@@ -8,6 +9,7 @@ from chat.chat_server.db import query
 
 
 def log_operation(method):
+    @wraps(method)
     def wrapper(*args, **kwargs):
         try:
             yield method(*args, **kwargs)
@@ -51,13 +53,13 @@ class DBService(service.Service):
             raise
 
     @defer.inlineCallbacks
-    def user_registered(self, nick):
+    def is_user_registered(self, nick):
         try:
             nicks = yield self._dbpool.runQuery(query.select_nick, (nick,))
-            log.msg('DB: user_registered CALL SUCCESSFUL')
+            log.msg('DB: is_user_registered CALL SUCCESSFUL')
             return nicks != []
         except failure.Failure as f:
-            log.err(f'DB: user_registered CALL FAILURE: {f.getErrorMessage()}')
+            log.err(f'DB: is_user_registered CALL FAILURE: {f.getErrorMessage()}')
             raise
 
     @defer.inlineCallbacks

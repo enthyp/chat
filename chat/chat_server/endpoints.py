@@ -5,18 +5,18 @@ from chat import irc
 
 
 class InitialEndpoint(irc.IRCEndpoint):
-    def __init__(self, dispatcher, protocol):
+    def __init__(self, endpoint_manager, protocol):
         super().__init__(protocol)
-        self.dispatcher = dispatcher
+        self.endpoint_manager = endpoint_manager
 
     def irc_REGISTER(self, message):
-        self.dispatcher.chat_client_connected(self._protocol, message)
+        self.endpoint_manager.chat_client_connected(self._protocol, message)
 
     def irc_LOGIN(self, message):
-        self.dispatcher.chat_client_connected(self._protocol, message)
+        self.endpoint_manager.chat_client_connected(self._protocol, message)
 
     def irc_CONNECT(self, message):
-        self.dispatcher.chat_server_connected(self._protocol, message)
+        self.endpoint_manager.chat_server_connected(self._protocol, message)
 
     def irc_unknown(self, message):
         self._protocol.transport.loseConnection()
@@ -59,10 +59,11 @@ class ClientEndpoint(irc.IRC):
         CONVERSATION: {}
     }
 
-    def __init__(self, server, protocol):
+    def __init__(self, db, dispatcher, protocol):
         super().__init__(protocol)
         self.state = self.INITIAL
-        self.server = server
+        self.db = db
+        self.dispatcher = dispatcher
         self.reg_deferred = None
         self.login_deferred = None
 
@@ -108,17 +109,17 @@ class ClientEndpoint(irc.IRC):
         log.msg(f'REGISTERING {nick} {mail}')
 
         try:
-            nick_available, mail_available = yield self.server.account_available(nick, mail)
+            nick_available, mail_available = yield self.db.account_available(nick, mail)
             if nick_available and mail_available:
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
-                        yield self.server.add_user(nick, mail, password)
+                        yield self.db.add_user(nick, mail, password)
 
                         self.state = self.LOGGED_IN
                         self.nick = nick
                         self.registered(nick, mail, password)
-                        self.server.dispatcher.user_registered(nick, mail, password)
+                        self.dispatcher.user_registered(nick, mail, password)
                     except failure.Failure:
                         self.internal_error('DB error, please try again.')
 
@@ -140,17 +141,17 @@ class ClientEndpoint(irc.IRC):
         log.msg(f'LOGGING IN {user}')
 
         try:
-            user_registered = yield self.server.user_registered(user)
+            user_registered = yield self.db.is_user_registered(user)
             if user_registered:
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
-                        password_correct = yield self.server.password_correct(user, password)
+                        password_correct = yield self.db.password_correct(user, password)
                         if password_correct:
                             self.state = self.LOGGED_IN
                             self.nick = user
-                            # TODO: propagate to other servers.
                             self.logged_in(user)
+                            self.dispatcher.user_logged_in(user)
                         else:
                             # TODO: some trial countdown!
                             self.wrong_password()
@@ -180,15 +181,20 @@ class ClientEndpoint(irc.IRC):
             log.err('ERR: PASSWORD received unexpectedly.')  # TODO: anything else?
 
     def logout_user(self):
+        self.logged_out(self.nick)
+        self.dispatcher.user_logged_out(self.nick)
         self.close_connection('Logged out.')
 
     @defer.inlineCallbacks
     def unregister_user(self):
         try:
-            yield self.server.delete_user(self.nick)
+            yield self.db.delete_user(self.nick)
+            self.unregistered(self.nick)
+            self.dispatcher.user_unregistered(self.nick)
             self.close_connection('Unregistered.')
         except failure.Failure:
             self.internal_error('DB error, please try again.')
 
     def get_users_status(self, users):
-        return self.server.dispatcher.is_on(users)
+        users_on = self.dispatcher.is_on(users)
+        self.is_on(users_on)
