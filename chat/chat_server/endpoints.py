@@ -55,8 +55,9 @@ class ClientEndpoint(irc.IRC):
         INITIAL: {'REGISTER', 'LOGIN'},
         REGISTERING: {'PASSWORD'},
         LOGGING_IN: {'PASSWORD'},
-        LOGGED_IN: {'UNREGISTER', 'LOGOUT', 'ISON', 'CONNECT', 'DISCONNECT'},
-        CONVERSATION: {}
+        LOGGED_IN: {'UNREGISTER', 'LOGOUT', 'LIST', 'ISON', 'CONNECT', 'DISCONNECT',
+                    'CREATE', 'DELETE', 'JOIN', 'QUIT', 'ADD', 'KICK'},
+        CONVERSATION: {'DELETE', 'LEAVE', 'QUIT', 'ADD', 'KICK', 'NAMES', 'MSG'}
     }
 
     def __init__(self, db, dispatcher, protocol):
@@ -137,21 +138,21 @@ class ClientEndpoint(irc.IRC):
             self.internal_error('DB error, please try again.')
 
     @defer.inlineCallbacks
-    def login_user(self, user):
-        log.msg(f'LOGGING IN {user}')
+    def login_user(self, nick):
+        log.msg(f'LOGGING IN {nick}')
 
         try:
-            user_registered = yield self.db.is_user_registered(user)
+            user_registered = yield self.db.is_user_registered(nick)
             if user_registered:
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
-                        password_correct = yield self.db.password_correct(user, password)
+                        password_correct = yield self.db.password_correct(nick, password)
                         if password_correct:
                             self.state = self.LOGGED_IN
-                            self.nick = user
-                            self.logged_in(user)
-                            self.dispatcher.user_logged_in(user)
+                            self.nick = nick
+                            self.logged_in(nick)
+                            self.dispatcher.user_logged_in(nick)
                         else:
                             # TODO: some trial countdown!
                             self.wrong_password()
@@ -166,7 +167,7 @@ class ClientEndpoint(irc.IRC):
                 self.state = self.LOGGING_IN
                 self.send_me_password()
             else:
-                self.no_user(user)
+                self.no_user(nick)
         except failure.Failure:
             self.internal_error('DB error, please try again.')
 

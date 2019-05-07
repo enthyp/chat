@@ -81,7 +81,7 @@ class Dispatcher:
 
 
 class EndpointManager(protocol.Factory):
-    protocol = irc.IRCBaseProtocol
+    protocol = irc.IRCProtocol
 
     def __init__(self, db, dispatcher):
         self.db = db

@@ -1,4 +1,6 @@
 # Partially based on twisted.words.irc
+from abc import ABC, abstractmethod
+
 from twisted.protocols import basic
 from twisted.python import log
 
@@ -9,6 +11,8 @@ class IRCBadMessageFormat(Exception):
 
 
 class IRCMessage:
+    """IRC message representation."""
+
     def __init__(self, string):
         prefix, command, params = self._parse_message(string)
         self.prefix = prefix
@@ -43,24 +47,23 @@ class IRCMessage:
         return string
 
 
-class IRCBaseProtocol(basic.LineReceiver):
+class IRCProtocol(basic.LineReceiver):
+    """
+    Physical connection to client who communicates via IRC messages.
+
+    All handling of incoming messages, as well as initiating message
+    sends is done at IRCEndpoint level.
+
+    """
 
     delimiter = '\n'.encode('utf-8')
-
-    @property
-    def endpoint(self):
-        return self._endpoint
-
-    @endpoint.setter
-    def endpoint(self, endpoint):
-        self._endpoint = endpoint
 
     # Low-level protocol methods.
     def lineReceived(self, line):
         line = line.decode('utf-8', errors='ignore')
         try:
             message = IRCMessage(line)
-            self.endpoint.handle_message(message)
+            self.handler.handle_message(message)
         except IRCBadMessageFormat as e:
             log.err(f'ERR: Exception: {str(e)} caused by line: {line}')
 
@@ -68,12 +71,40 @@ class IRCBaseProtocol(basic.LineReceiver):
         line = line.encode('utf-8', errors='ignore')
         super().sendLine(line)
 
+    @property
+    def handler(self):
+        return self._handler
 
-class IRCEndpoint:
+    @handler.setter
+    def handler(self, handler):
+        self._handler = handler
+
+
+class Handler(ABC):
+    @abstractmethod
+    def handle_message(self, message):
+        pass
+    
+
+class ProtocolAdapter(ABC, Handler):
+    @abstractmethod
+    def send(self, content):
+        pass
+
+
+class IRCAdapter(ProtocolAdapter):
+    """
+    Interface of individual IRCProtocol instance.
+
+    It should define methods that allow for sending appropriate IRC messages,
+    as well as handler methods that get called when IRC message is received.
+
+    """
+
     def __init__(self, protocol):
         self._protocol = protocol
 
-    def sendLine(self, line):
+    def send(self, line):
         self._protocol.sendLine(line)
 
     def handle_message(self, message):
@@ -95,137 +126,137 @@ class IRCEndpoint:
         log.err(f'ERR: Unknown command: {cmd} with params: {params}')
 
 
-class IRC(IRCEndpoint):
+class IRCServerAdapter(IRCAdapter):
     # Outgoing messages (server -> client).
     def send_me_password(self):  # ok
-        self.sendLine('RPL_PWD')
+        self.send('RPL_PWD')
 
     def registered(self, nick, mail, password):  # ok
-        self.sendLine(f'OK_REG {nick} {mail} {password}')
+        self.send(f'OK_REG {nick} {mail} {password}')
 
     def taken(self, value, what='nick'):  # ok
         if what == 'nick':
-            self.sendLine(f'ERR_TAKEN nick {value}')
+            self.send(f'ERR_TAKEN nick {value}')
         elif what == 'mail':
-            self.sendLine(f'ERR_TAKEN mail {value}')
+            self.send(f'ERR_TAKEN mail {value}')
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
     def reg_clashed(self, value, what='nick'):  # ok
         if what == 'nick':
-            self.sendLine(f'ERR_CLASH_REG nick {value}')
+            self.send(f'ERR_CLASH_REG nick {value}')
         elif what == 'mail':
-            self.sendLine(f'ERR_CLASH_REG mail {value}')
+            self.send(f'ERR_CLASH_REG mail {value}')
         else:
             raise ValueError('"what" parameter must be either "nick" or "mail".')
 
     def internal_error(self, communicate):
-        self.sendLine(f'ERR_INTERNAL :{communicate}')
+        self.send(f'ERR_INTERNAL :{communicate}')
 
     def unregistered(self, user):  # ok
-        self.sendLine(f'OK_UNREG {user}')
+        self.send(f'OK_UNREG {user}')
 
     def logged_in(self, user):  # ok
-        self.sendLine(f'OK_LOGIN {user}')
+        self.send(f'OK_LOGIN {user}')
 
     def login_clashed(self, user):  # ok
-        self.sendLine(f'ERR_CLASH_LOGIN {user}')
+        self.send(f'ERR_CLASH_LOGIN {user}')
 
     def wrong_password(self):
-        self.sendLine('ERR_BAD_PASSWORD')
+        self.send('ERR_BAD_PASSWORD')
 
     def logged_out(self, nick):  # ok
-        self.sendLine(f'OK_LOGOUT {nick}')
+        self.send(f'OK_LOGOUT {nick}')
 
     def list(self, channels):  # ok
         channels = ' '.join(channels)
-        self.sendLine(f'RPL_LIST {channels}')
+        self.send(f'RPL_LIST {channels}')
 
     def is_on(self, users):  # ok
         users = ' '.join(users)
-        self.sendLine(f'RPL_ISON {users}')
+        self.send(f'RPL_ISON {users}')
 
     def names(self, channel, users):
         users = ' '.join(users)
-        self.sendLine(f'RPL_NAMES {channel} {users}')
+        self.send(f'RPL_NAMES {channel} {users}')
 
     def created(self, channel, creator, users):
         users = ' '.join(users)
-        self.sendLine(f'OK_CREATED {channel} {creator} {users}')
+        self.send(f'OK_CREATED {channel} {creator} {users}')
 
     def channel_exists(self, channel):
-        self.sendLine(f'ERR_EXISTS {channel}')
+        self.send(f'ERR_EXISTS {channel}')
 
     def channel_clashed(self, channel):
-        self.sendLine(f'ERR_CLASH_CREAT {channel}')
+        self.send(f'ERR_CLASH_CREAT {channel}')
 
     def channel_deleted(self, channel):
-        self.sendLine(f'OK_DELETED {channel}')
+        self.send(f'OK_DELETED {channel}')
 
     def no_channel(self, channel):
-        self.sendLine(f'ERR_NOCHANNEL {channel}')
+        self.send(f'ERR_NOCHANNEL {channel}')
 
     def no_perms(self, perm_type, reason):
-        self.sendLine(f'ERR_NO_PERM {perm_type} :{reason}')
+        self.send(f'ERR_NO_PERM {perm_type} :{reason}')
 
     def joined(self, channel):
-        self.sendLine(f'OK_JOINED {channel}')
+        self.send(f'OK_JOINED {channel}')
 
     def user_joined(self, channel, user):
-        self.sendLine(f'JOINED {channel} {user}')
+        self.send(f'JOINED {channel} {user}')
 
     def left(self, channel):
-        self.sendLine(f'OK_LEFT {channel}')
+        self.send(f'OK_LEFT {channel}')
 
     def user_left(self, channel, user):
-        self.sendLine(f'LEFT {channel} {user}')
+        self.send(f'LEFT {channel} {user}')
 
     def quit(self, channel):
-        self.sendLine(f'OK_QUIT {channel}')
+        self.send(f'OK_QUIT {channel}')
 
     def user_quit(self, channel, user):
-        self.sendLine(f'USER_QUIT {channel} {user}')
+        self.send(f'USER_QUIT {channel} {user}')
 
     def added(self, channel, users):
         users = ' '.join(users)
-        self.sendLine(f'OK_ADDED {channel} {users}')
+        self.send(f'OK_ADDED {channel} {users}')
 
     def users_added(self, channel, users):
         users = ' '.join(users)
-        self.sendLine(f'ADDED {channel} {users}')
+        self.send(f'ADDED {channel} {users}')
 
     def no_user(self, user):
-        self.sendLine(f'ERR_NOUSER {user}')
+        self.send(f'ERR_NOUSER {user}')
 
     def kicked(self, channel, users):
         users = ' '.join(users)
-        self.sendLine(f'OK_KICKED {channel} {users}')
+        self.send(f'OK_KICKED {channel} {users}')
 
     def user_kicked(self, channel, users):
         users = ' '.join(users)
-        self.sendLine(f'KICKED {channel} {users}')
+        self.send(f'KICKED {channel} {users}')
 
     def msg(self, from_user, channel, content):
-        self.sendLine(f':{from_user} MSG {channel} :{content}')
+        self.send(f':{from_user} MSG {channel} :{content}')
 
     def notify(self, reason, notification):
-        self.sendLine(f'NOTIFY {reason} :{notification}')
+        self.send(f'NOTIFY {reason} :{notification}')
 
     def warn(self, warning):
-        self.sendLine(f'WARN :{warning}')
+        self.send(f'WARN :{warning}')
 
     def connection_closed(self, message):
-        self.sendLine(f'CLOSED :{message}')
+        self.send(f'CLOSED :{message}')
 
     # Outgoing messages (server -> server).
     def connect(self, password):
-        self.sendLine(f'CONNECT {password}')
+        self.send(f'CONNECT {password}')
 
     def disconnect(self):
-        self.sendLine('DISCONNECT')
+        self.send('DISCONNECT')
 
     def sync(self):
-        self.sendLine('SYNC')
+        self.send('SYNC')
 
     # TODO: handle incomplete parameters?
     # Incoming commands.
@@ -472,7 +503,7 @@ class IRC(IRCEndpoint):
         pass
 
 
-class IRCClient(IRCEndpoint):
+class IRCClientAdapter(IRCAdapter):
     # Outgoing commands.
     def register(self, user, mail):  # ok
         self.sendLine(f'REGISTER {user} {mail}')
