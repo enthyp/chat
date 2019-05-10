@@ -23,3 +23,4 @@ class Checker(Model):
         X_S = pad_sequences(list_tokenized_S, self.maxlen)
         y_S = self.model.predict([X_S])
         return y_S
+    
