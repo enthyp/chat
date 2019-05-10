@@ -41,9 +41,12 @@ class ChatClientFactory(ClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         log.err('Failed to connect: ' + reason.getErrorMessage())
+        from twisted.internet import reactor
+        reactor.stop()
 
-    clientConnectionLost = clientConnectionFailed
-
+    def clientConnectionLost(self, connector, reason):
+        from twisted.internet import reactor
+        reactor.stop()
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Basic server server in Twisted.')

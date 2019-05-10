@@ -66,15 +66,14 @@ class ToxicFactory(ServerFactory):
 
 
 class ToxicService(service.Service):
-    def __init__(self, model_path, get_model: typing.Callable[[str], ai.Model]):
-        self.model_path = model_path
+    def __init__(self, get_model: typing.Callable[[], ai.Model]):
         self.get_model = get_model
         self.model = None
 
     def startService(self):
         service.Service.startService(self)
-        self.model = self.get_model(self.model_path)
-        log.msg(f'Loaded model from {self.model_path}')
+        self.model = self.get_model()
+        log.msg(f'Loaded model.')
 
     def process(self, msg):
         return self.model.process(msg)
@@ -85,10 +84,16 @@ iface = 'localhost'
 
 
 def get_model_dummy(_):
-    return ai.Checker()
+    return ai.MockChecker()
+
+
+def get_model_legit():
+    checker = ai.Checker()
+    checker.load_from_package(100)
+    return checker
 
 supervisor = service.MultiService()
-toxic_service = ToxicService('', get_model_dummy)
+toxic_service = ToxicService(get_model_legit)
 toxic_service.setServiceParent(supervisor)
 
 factory = ToxicFactory(toxic_service)

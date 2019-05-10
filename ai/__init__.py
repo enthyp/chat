@@ -1,1 +1,2 @@
-from .mock import Model, Checker
+from ai.mock import Model, MockChecker
+from ai.checker import Checker
