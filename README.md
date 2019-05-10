@@ -1,6 +1,16 @@
 # Chat
 Chat server with online toxic message detection.
 
+## Running.
+  * Run ai-service:  
+    `twistd --nodaemon --python chat/server/ai_service.py`
+    BTW: _nodaemon_ option runs service in the terminal process, you can run in background if you remove that option and add `--pidfile=ai --log=ai`. `ai.pid` then contains PID of the service (kill it when you're done).
+  * Run chat-service:  
+    `twistd --python chat/server/chat_service.py`
+    Same as above applies to running in the background.
+  * Run client:
+    `python chat/client.py 8080`
+
 ## Development.
 ### Prerequisites.
 1. cd to top level project directory.  
