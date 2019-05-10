@@ -1,10 +1,10 @@
 import twisted.internet.defer as defer
 from twisted.python import log, failure
 
-from chat import irc
+from chat.communication import Endpoint
 
 
-class InitialEndpoint(irc.IRCEndpoint):
+class InitialEndpoint(communication.IRCEndpoint):
     def __init__(self, endpoint_manager, protocol):
         super().__init__(protocol)
         self.endpoint_manager = endpoint_manager
@@ -25,7 +25,7 @@ class InitialEndpoint(irc.IRCEndpoint):
         log.err(f'ERR: bad opening message: {cmd} with params: {params}')
 
 
-class ServerEndpoint(irc.IRC):
+class ServerEndpoint(communication.IRC):
     def __init__(self, server, protocol):
         super().__init__(protocol)
         self.server = server
@@ -41,7 +41,37 @@ class ServerEndpoint(irc.IRC):
         self.server.dispatcher.server_disconnected(self)
 
 
-class ClientEndpoint(irc.IRC):
+class State:
+    def handle_message(self, message):
+        pass
+
+
+class InitialState(State):
+    pass
+
+
+class Peer:
+    pass
+
+
+class Server(Peer):
+    pass
+
+
+class Client(Peer):
+    def __init__(self, event_source, facade):
+        self.event_source = event_source
+        self.event_source.register_observer(self)
+
+        self.facade = facade
+
+        self.state = InitialState()
+
+    def handle_message(self, message):
+        self.state.handle_message(message)
+
+
+class ClientEndpoint(communication.IRC):
 
     # States of client connection.
     INITIAL = 0
@@ -199,3 +229,134 @@ class ClientEndpoint(irc.IRC):
     def get_users_status(self, users):
         users_on = self.dispatcher.is_on(users)
         self.is_on(users_on)
+
+
+class PeerEndpoint(Endpoint):
+    def send_me_password(self):  # ok
+        self.send('RPL_PWD')
+
+    def registered(self, nick, mail, password):  # ok
+        self.send(f'OK_REG {nick} {mail} {password}')
+
+    def taken(self, value, what='nick'):  # ok
+        if what == 'nick':
+            self.send(f'ERR_TAKEN nick {value}')
+        elif what == 'mail':
+            self.send(f'ERR_TAKEN mail {value}')
+        else:
+            raise ValueError('"what" parameter must be either "nick" or "mail".')
+
+    def reg_clashed(self, value, what='nick'):  # ok
+        if what == 'nick':
+            self.send(f'ERR_CLASH_REG nick {value}')
+        elif what == 'mail':
+            self.send(f'ERR_CLASH_REG mail {value}')
+        else:
+            raise ValueError('"what" parameter must be either "nick" or "mail".')
+
+    def internal_error(self, communicate):
+        self.send(f'ERR_INTERNAL :{communicate}')
+
+    def unregistered(self, user):  # ok
+        self.send(f'OK_UNREG {user}')
+
+    def logged_in(self, user):  # ok
+        self.send(f'OK_LOGIN {user}')
+
+    def login_clashed(self, user):  # ok
+        self.send(f'ERR_CLASH_LOGIN {user}')
+
+    def wrong_password(self):
+        self.send('ERR_BAD_PASSWORD')
+
+    def logged_out(self, nick):  # ok
+        self.send(f'OK_LOGOUT {nick}')
+
+    def list(self, channels):  # ok
+        channels = ' '.join(channels)
+        self.send(f'RPL_LIST {channels}')
+
+    def is_on(self, users):  # ok
+        users = ' '.join(users)
+        self.send(f'RPL_ISON {users}')
+
+    def names(self, channel, users):
+        users = ' '.join(users)
+        self.send(f'RPL_NAMES {channel} {users}')
+
+    def created(self, channel, creator, users):
+        users = ' '.join(users)
+        self.send(f'OK_CREATED {channel} {creator} {users}')
+
+    def channel_exists(self, channel):
+        self.send(f'ERR_EXISTS {channel}')
+
+    def channel_clashed(self, channel):
+        self.send(f'ERR_CLASH_CREAT {channel}')
+
+    def channel_deleted(self, channel):
+        self.send(f'OK_DELETED {channel}')
+
+    def no_channel(self, channel):
+        self.send(f'ERR_NOCHANNEL {channel}')
+
+    def no_perms(self, perm_type, reason):
+        self.send(f'ERR_NO_PERM {perm_type} :{reason}')
+
+    def joined(self, channel):
+        self.send(f'OK_JOINED {channel}')
+
+    def user_joined(self, channel, user):
+        self.send(f'JOINED {channel} {user}')
+
+    def left(self, channel):
+        self.send(f'OK_LEFT {channel}')
+
+    def user_left(self, channel, user):
+        self.send(f'LEFT {channel} {user}')
+
+    def quit(self, channel):
+        self.send(f'OK_QUIT {channel}')
+
+    def user_quit(self, channel, user):
+        self.send(f'USER_QUIT {channel} {user}')
+
+    def added(self, channel, users):
+        users = ' '.join(users)
+        self.send(f'OK_ADDED {channel} {users}')
+
+    def users_added(self, channel, users):
+        users = ' '.join(users)
+        self.send(f'ADDED {channel} {users}')
+
+    def no_user(self, user):
+        self.send(f'ERR_NOUSER {user}')
+
+    def kicked(self, channel, users):
+        users = ' '.join(users)
+        self.send(f'OK_KICKED {channel} {users}')
+
+    def user_kicked(self, channel, users):
+        users = ' '.join(users)
+        self.send(f'KICKED {channel} {users}')
+
+    def msg(self, from_user, channel, content):
+        self.send(f':{from_user} MSG {channel} :{content}')
+
+    def notify(self, reason, notification):
+        self.send(f'NOTIFY {reason} :{notification}')
+
+    def warn(self, warning):
+        self.send(f'WARN :{warning}')
+
+    def connection_closed(self, message):
+        self.send(f'CLOSED :{message}')
+
+    def connect(self, password):
+        self.send(f'CONNECT {password}')
+
+    def disconnect(self):
+        self.send('DISCONNECT')
+
+    def sync(self):
+        self.send('SYNC')

@@ -3,9 +3,8 @@ import twisted.internet.protocol as protocol
 from twisted.python import log
 from twisted.application import service
 
-from chat import irc
 from chat.chat_server import config
-from chat.chat_server.endpoints import InitialEndpoint, ClientEndpoint, ServerEndpoint
+from chat.chat_server.endpoint import InitialEndpoint, ClientEndpoint, ServerEndpoint
 
 
 def log_operation(method):
@@ -80,8 +79,8 @@ class Dispatcher:
         self.all_clients.remove(nick)
 
 
-class EndpointManager(protocol.Factory):
-    protocol = irc.IRCProtocol
+class ConnectionFactory(protocol.Factory):
+    protocol = protocol.BaseProtocol
 
     def __init__(self, db, dispatcher):
         self.db = db
@@ -110,7 +109,7 @@ class ChatServer(service.Service):
     def __init__(self, db):
         self.db = db
         self.dispatcher = Dispatcher()
-        self.endpoint_manager = EndpointManager(self.db, self.dispatcher)
+        self.endpoint_manager = ConnectionFactory(self.db, self.dispatcher)
 
     def startService(self):
         from twisted.internet import reactor
