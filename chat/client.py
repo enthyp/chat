@@ -34,6 +34,9 @@ class ChatClientProtocol(LineReceiver):
 
     def connectionLost(self, reason=connectionDone):
         print('Connection to server closed.')
+        from twisted.internet import reactor
+        if reactor.running:
+            reactor.stop()
 
 
 class ChatClientFactory(ClientFactory):
@@ -41,12 +44,7 @@ class ChatClientFactory(ClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         log.err('Failed to connect: ' + reason.getErrorMessage())
-        from twisted.internet import reactor
-        reactor.stop()
 
-    def clientConnectionLost(self, connector, reason):
-        from twisted.internet import reactor
-        reactor.stop()
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Basic server server in Twisted.')
