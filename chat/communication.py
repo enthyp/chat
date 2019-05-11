@@ -117,6 +117,9 @@ class MessageSource(ABC):
     def unregister_subscriber(self, subscriber):
         self.__subscribers.remove(subscriber)
 
+    def unregister_all(self):
+        self.__subscribers = set()
+
     def notify(self, message):
         for sub in self.__subscribers:
             sub.handle_message(message)
@@ -166,6 +169,9 @@ class BaseProtocol(basic.LineReceiver, MessageSource):
 
     def loseConnection(self):
         self.transport.loseConnection()
+
+    def connectionLost(self, reason):
+        self.unregister_all()
 
 
 class Endpoint(ABC):

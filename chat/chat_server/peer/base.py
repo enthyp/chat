@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from twisted.python import log
 
 import chat.communication as comm
@@ -12,15 +12,9 @@ class Peer(ABC):
         self.protocol = protocol
         self.endpoint = endpoint
         self.state = None
-        self.id = None
-        self.state_init()
-
-    @abstractmethod
-    def state_init(self):
-        pass
 
     def lose_connection(self):
-        # TODO: must remove Peer entirely
+        # TODO: must remove Peer entirely.
         self.protocol.lose_connection()
 
     def __del__(self):

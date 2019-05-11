@@ -1,90 +1,34 @@
-from functools import wraps
-
-import twisted.internet.protocol as protocol
-from twisted.application import service
 from twisted.python import log
+from twisted.internet import protocol
+from twisted.application import service
 
 from chat.chat_server import config
-from peer import InitialEndpoint, ClientEndpoint, ServerEndpoint
+from chat.chat_server import peer
+from chat.chat_server import dispatch
 
 
-def log_operation(method):
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        log.msg(f'DISPATCH: {method.__name__} CALLED')
-        return method(*args, **kwargs)
+class PeerFactory(protocol.Factory):
 
-    return wrapper
-
-
-# TODO: IDEA!!! Dispatcher can have a collection of Channel objects! each Channel
-# is responsible for message distribution
-
-class Dispatcher:
-    # TODO: could be implemented with Redis key-value store + txredis?
-    def __init__(self):
-        self.direct_clients = set()  # TODO: nick -> (client/server) endpoint maps?
-        self.all_clients = set()
-        self.chat_server_endpoints = set()
-        self.channel2endpoint = {}
-
-    @log_operation
-    def is_on(self, nicks):
-        return list(set(nicks) & self.all_clients)
-
-    @log_operation
-    def on_user_logged_in(self, nick, direct=True):
-        if direct:
-            self.direct_clients.add(nick)
-        else:
-            self.all_clients.add(nick)
-
-    @log_operation
-    def on_user_logged_out(self, nick, direct=True):
-        if direct:
-            self.direct_clients.remove(nick)
-        else:
-            self.all_clients.remove(nick)
-
-    @log_operation
-    def on_server_connected(self, endpoint):
-        self.chat_server_endpoints.add(endpoint)
-
-    @log_operation
-    def on_server_disconnected(self, endpoint):
-        self.chat_server_endpoints.remove(endpoint)
-
-    @log_operation
-    def user_registered(self, nick, mail, password):
-        for peer in self.chat_server_endpoints:
-            peer.registered(nick, mail, password)
-        self.direct_clients.add(nick)
-        self.all_clients.add(nick)
-
-    @log_operation
-    def user_logged_in(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.logged_in(nick)
-        self.direct_clients.add(nick)
-        self.all_clients.add(nick)
-
-    @log_operation
-    def user_unregistered(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.unregistered(nick)
-        self.direct_clients.remove(nick)
-        self.all_clients.remove(nick)
-
-    @log_operation
-    def user_logged_out(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.logged_out(nick)
-        self.direct_clients.remove(nick)
-        self.all_clients.remove(nick)
-
-
-class ConnectionFactory(protocol.Factory):
     protocol = protocol.BaseProtocol
+
+    class InitialSubscriber:
+        def __init__(self, factory, protocol):
+            self.protocol = protocol
+            self.factory = factory
+
+        def handle_message(self, message):
+            self.protocol.unregister_subscriber(self)
+
+            if message.command in ('REGISTER', 'LOGIN'):
+                self.factory.chat_client_connected(self.protocol, message)
+            elif message.command == 'CONNECT':
+                self.factory.chat_server_connected(self.protocol, message)
+            else:
+                self.factory.bad_message(self.protocol, message)
+
+        def __del__(self):
+            # TODO: for now.
+            log.msg('Initial subscriber taken out with trash.')
 
     def __init__(self, db, dispatcher):
         self.db = db
@@ -92,33 +36,43 @@ class ConnectionFactory(protocol.Factory):
 
     def buildProtocol(self, addr):
         protocol = self.protocol()
-        endpoint = InitialEndpoint(self, protocol)
-        protocol.endpoint = endpoint
+        subscriber = self.InitialSubscriber(self, protocol)
+        protocol.register_subscriber(subscriber)
 
         return protocol
 
-    def chat_server_connected(self, protocol, message):
-        endpoint = ServerEndpoint(self, protocol)
-        protocol.endpoint = endpoint
-        endpoint.handle_message(message)
-
     def chat_client_connected(self, protocol, message):
-        endpoint = ClientEndpoint(self.db, self.dispatcher, protocol)
-        protocol.endpoint = endpoint
-        endpoint.handle_message(message)
-        # TODO: add to some collection of peer.
+        endpoint = peer.ChatClientEndpoint(protocol)
+        client_peer = peer.ChatClient(self.db, self.dispatcher, protocol, endpoint)
+        client_peer.state_init(message)
+
+        self.dispatcher.add_peer(client_peer)
+
+    def chat_server_connected(self, protocol, message):
+        endpoint = peer.ChatServerEndpoint(protocol)
+        server_peer = peer.ChatServer(self.db, self.dispatcher, protocol, endpoint)
+        server_peer.state_init(message)
+
+        self.dispatcher.add_peer(server_peer)
+
+    @staticmethod
+    def bad_message(self, protocol, message):
+        protocol.lose_connection()
+        cmd = message.command
+        params = message.params
+        log.err(f'Received {cmd} with params: {params}')
 
 
 class ChatServer(service.Service):
     def __init__(self, db):
         self.db = db
-        self.dispatcher = Dispatcher()
-        self.endpoint_manager = ConnectionFactory(self.db, self.dispatcher)
+        self.dispatcher = dispatch.Dispatcher()
+        self.peer_factory = PeerFactory(self.db, self.dispatcher)
 
     def startService(self):
         from twisted.internet import reactor
         reactor.listenTCP(config.server_port,
-                          self.endpoint_manager,
+                          self.peer_factory,
                           interface=config.server_host)
 
     def stopService(self):

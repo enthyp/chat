@@ -1,8 +1,8 @@
-from twisted.python import log, failure
+from twisted.python import failure
 import twisted.internet.defer as defer
 
-import chat.communication as comm
-import chat.chat_server.peer as peer
+from chat import communication as comm
+from chat.chat_server import peer
 
 
 class ChatClientEndpoint(comm.Endpoint):
@@ -258,8 +258,9 @@ class LoggedInState(peer.State):
 
 
 class ChatClient(peer.Peer):
-    def state_init(self):
+    def state_init(self, message):
         self.state = InitialState(self.protocol, self.endpoint, self)
+        self.state.handle_message(message)
 
     def state_registering(self, message):
         self.state = RegisteringState(self.protocol, self.endpoint,
