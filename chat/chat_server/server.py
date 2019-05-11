@@ -1,10 +1,11 @@
 from functools import wraps
+
 import twisted.internet.protocol as protocol
-from twisted.python import log
 from twisted.application import service
+from twisted.python import log
 
 from chat.chat_server import config
-from chat.chat_server.endpoint import InitialEndpoint, ClientEndpoint, ServerEndpoint
+from peer import InitialEndpoint, ClientEndpoint, ServerEndpoint
 
 
 def log_operation(method):
@@ -15,6 +16,9 @@ def log_operation(method):
 
     return wrapper
 
+
+# TODO: IDEA!!! Dispatcher can have a collection of Channel objects! each Channel
+# is responsible for message distribution
 
 class Dispatcher:
     # TODO: could be implemented with Redis key-value store + txredis?
@@ -102,7 +106,7 @@ class ConnectionFactory(protocol.Factory):
         endpoint = ClientEndpoint(self.db, self.dispatcher, protocol)
         protocol.endpoint = endpoint
         endpoint.handle_message(message)
-        # TODO: add to some collection of peers.
+        # TODO: add to some collection of peer.
 
 
 class ChatServer(service.Service):

@@ -1,8 +1,7 @@
 from chat.communication import Endpoint
 
 
-class ServerEndpointOnClientSideXD(Endpoint):
-    # Outgoing commands.
+class ServerEndpoint(Endpoint):
     def register(self, user, mail):  # ok
         self.send(f'REGISTER {user} {mail}')
 
@@ -43,10 +42,13 @@ class ServerEndpointOnClientSideXD(Endpoint):
         channel_list = ' '.join(channels)
         self.send(f'QUIT {channel_list}')
 
-    # TODO: add invites to public channels!
     def add(self, channel, nicks):
         nick_list = ' '.join(nicks)
         self.send(f'ADD {channel} {nick_list}')
+
+    def invite(self, channel, nicks):
+        nick_list = ' '.join(nicks)
+        self.send(f'INVITE {channel} {nick_list}')
 
     def kick(self, channel, nicks):
         nick_list = ' '.join(nicks)

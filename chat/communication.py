@@ -1,4 +1,5 @@
 # Partially based on twisted.words.irc
+import string
 from abc import ABC, abstractmethod
 
 from twisted.protocols import basic
@@ -18,6 +19,10 @@ class Message:
     constructor does not raise BadMessage exception, then given
     string is correct.
     """
+
+    alpha = string.ascii_letters
+    alphanum = string.ascii_letters + string.digits
+    special_chars = '-_[]\`^{}'
 
     def __init__(self, string):
         prefix, command, params = self._parse_message(string)
@@ -45,15 +50,27 @@ class Message:
         if not string:
             raise BadMessage('Empty string.')
 
+        if not set(string).issubset(Message.alphanum + Message.special_chars):
+            raise BadMessage('Bad characters.')
+
         prefix, trailing = '', ''
         if string[0] == ':':
             prefix, string = string[1:].split(' ', 1)
         if ':' in string:
             string, trailing = string.split(':', 1)
 
+        if not string:
+            raise BadMessage('No command.')
+
         args = string.split()
         if trailing:
             args.append(trailing)
+
+        if prefix and not set(prefix).issubset(Message.alphanum + Message.special_chars):
+            raise BadMessage('Bad prefix.')
+
+        if not set(args[0]).issubset(Message.alpha):
+            raise BadMessage('Bad command.')
 
         return prefix, args[0], args[1:]
 
@@ -63,22 +80,22 @@ class Message:
 
         Most often it amounts to checking if appropriate number
         of parameters were passed etc. This job is delegated to
-        methods with names starting with 'val_'.
+        methods with names starting with '_validate_'.
         :param prefix:
         :param command:
         :param params:
         :return:
         """
-        method_name = f'val_{command}'
+        method_name = f'_validate_{command}'
 
         try:
             method = getattr(self, method_name)
-            method(prefix, params)
+            return method(prefix, params)
         except AttributeError:
             raise BadMessage(f'Unknown message type: {command}')
 
     # TODO: finish validation.
-    def val_OK_REG(self, message):
+    def _validate_OK_REG(self, message):
         pass
 
 
@@ -92,10 +109,13 @@ class MessageSource(ABC):
     """
 
     def __init__(self):
-        self.__subscribers = []
+        self.__subscribers = set()
 
     def register_subscriber(self, subscriber):
-        self.__subscribers.append(subscriber)
+        self.__subscribers.add(subscriber)
+
+    def unregister_subscriber(self, subscriber):
+        self.__subscribers.remove(subscriber)
 
     def notify(self, message):
         for sub in self.__subscribers:
@@ -109,7 +129,7 @@ class MessageSubscriber(ABC):
     It's 'handle_message' method is called with beautifully correct
     Messages. All an implementation should do is implement methods
     named 'msg_COMMAND', e.g. msg_OK_REG, that take a Message as an
-    argument.
+    argument and do whatever they want with them.
     """
 
     def __init__(self, source):
@@ -117,18 +137,7 @@ class MessageSubscriber(ABC):
 
     @abstractmethod
     def handle_message(self, message):
-        method_name = f'msg_{message.command}'
-        method = getattr(self, method_name, None)
-
-        if method is None:
-            self.msg_unknown(message)
-        else:
-            method(message)
-
-    @staticmethod
-    def msg_unknown(message):
-        cmd = message.command
-        log.err(f'ERR: Unhandled message type: {cmd}')
+        pass
 
 
 class BaseProtocol(basic.LineReceiver, MessageSource):
@@ -154,6 +163,9 @@ class BaseProtocol(basic.LineReceiver, MessageSource):
     def sendLine(self, line):
         line = line.encode('utf-8', errors='ignore')
         super().sendLine(line)
+
+    def loseConnection(self):
+        self.transport.loseConnection()
 
 
 class Endpoint(ABC):

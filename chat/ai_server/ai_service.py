@@ -1,5 +1,4 @@
 import typing
-
 from twisted.application import internet, service
 from twisted.internet.protocol import ServerFactory
 from twisted.protocols.basic import LineReceiver
