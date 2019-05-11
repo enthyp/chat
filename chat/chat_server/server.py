@@ -5,19 +5,20 @@ from twisted.application import service
 from chat.chat_server import config
 from chat.chat_server import peer
 from chat.chat_server import dispatch
+from chat import communication as comm
 
 
 class PeerFactory(protocol.Factory):
 
-    protocol = protocol.BaseProtocol
+    protocol = comm.BaseProtocol
 
-    class InitialSubscriber:
+    class InitialSubscriber(comm.MessageSubscriber):
         def __init__(self, factory, protocol):
             self.protocol = protocol
             self.factory = factory
 
         def handle_message(self, message):
-            self.protocol.unregister_subscriber(self)
+            self.protocol.unregister_subscriber()
 
             if message.command in ('REGISTER', 'LOGIN'):
                 self.factory.chat_client_connected(self.protocol, message)
@@ -25,10 +26,6 @@ class PeerFactory(protocol.Factory):
                 self.factory.chat_server_connected(self.protocol, message)
             else:
                 self.factory.bad_message(self.protocol, message)
-
-        def __del__(self):
-            # TODO: for now.
-            log.msg('Initial subscriber taken out with trash.')
 
     def __init__(self, db, dispatcher):
         self.db = db

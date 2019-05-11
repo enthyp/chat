@@ -6,6 +6,9 @@ from chat.chat_server import peer
 
 
 class ChatClientEndpoint(comm.Endpoint):
+    def num_params_wrong(self):
+        self.send('ERR_NUM_PARAMS')
+
     def send_me_password(self):  # ok
         self.send('RPL_PWD')
 
@@ -134,6 +137,11 @@ class InitialState(peer.State):
     def msg_LOGIN(self, message):
         self.manager.state_logging_in(message)
 
+    def msg_unknown(self, message):
+        self.endpoint.close_connection('Incorrect opening.')
+        self.manager.lose_connection()
+        super().msg_unknown(message)
+
 
 class RegisteringState(peer.State):
     def __init__(self, protocol, endpoint, db, dispatcher, manager):
@@ -171,7 +179,7 @@ class RegisteringState(peer.State):
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
-    def msg_PWD(self, message):
+    def msg_PASSWORD(self, message):
         password = message.params[0]
         if self.reg_deferred:
             d, self.reg_deferred = self.reg_deferred, None
@@ -210,6 +218,7 @@ class LoggingInState(peer.State):
                                 self.login_deferred.addCallback(on_password_received)
                                 self.endpoint.wrong_password(self.password_countdown)
                             else:
+                                self.endpoint.connection_closed('Too many password retries.')
                                 self.manager.lose_connection()
                     except failure.Failure:
                         self.endpoint.internal_error('DB error, please try again.')
@@ -222,7 +231,9 @@ class LoggingInState(peer.State):
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
-    def msg_PWD(self, password):
+    def msg_PASSWORD(self, message):
+        password = message.params[0]
+
         if self.login_deferred:
             d, self.login_deferred = self.login_deferred, None
             d.callback(password)
@@ -238,7 +249,7 @@ class LoggedInState(peer.State):
 
     def msg_LOGOUT(self, _):
         self.endpoint.logged_out(self.nick)
-        self.dispatcher.user_logged_out()
+        self.dispatcher.user_logged_out(self.nick)
         self.manager.lose_connection()
 
     @defer.inlineCallbacks
@@ -246,7 +257,7 @@ class LoggedInState(peer.State):
         try:
             yield self.db.delete_user(self.nick)
             self.endpoint.unregistered(self.nick)
-            self.dispatcher.user_unregistered()
+            self.dispatcher.user_unregistered(self.nick)
             self.manager.lose_connection()
         except failure.Failure:
             self.internal_error('DB error, please try again.')

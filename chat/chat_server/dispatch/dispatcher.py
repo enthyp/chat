@@ -1,6 +1,8 @@
 from functools import wraps
 from twisted.python import log
 
+from chat.chat_server import dispatch
+
 
 def log_operation(method):
     @wraps(method)
@@ -11,66 +13,64 @@ def log_operation(method):
     return wrapper
 
 
-# TODO: IDEA!!! Dispatcher can have a collection of Channel objects! each Channel
-# is responsible for message distribution.
-
 class Dispatcher:
     def __init__(self):
-        self.direct_clients = set()  # TODO: nick -> (client/server) endpoint maps?
-        self.all_clients = set()
-        self.chat_server_endpoints = set()
-        self.channel2endpoint = {}
+        # TODO: maybe we should have a separate online users registry (users online per channel also, etc.)?
+        self.users_online = set()
+        self.peers = set()
+        self.server_channel = dispatch.Channel('chat_servers')
+        self.channels = {}
+
+    @log_operation
+    def add_peer(self, peer):
+        self.peers.add(peer)
+
+    # TODO: remove peer when done.
 
     @log_operation
     def is_on(self, nicks):
-        return list(set(nicks) & self.all_clients)
+        return list(set(nicks) & self.users_online)
 
     @log_operation
-    def on_user_logged_in(self, nick, direct=True):
-        if direct:
-            self.direct_clients.add(nick)
-        else:
-            self.all_clients.add(nick)
+    def on_user_logged_in(self, nick):
+        self.users_online.add(nick)
 
     @log_operation
-    def on_user_logged_out(self, nick, direct=True):
-        if direct:
-            self.direct_clients.remove(nick)
-        else:
-            self.all_clients.remove(nick)
+    def on_user_logged_out(self, nick):
+        self.users_online.remove(nick)
 
     @log_operation
-    def on_server_connected(self, endpoint):
-        self.chat_server_endpoints.add(endpoint)
+    def on_server_connected(self, peer):
+        self.peers.add(peer)
 
     @log_operation
-    def on_server_disconnected(self, endpoint):
-        self.chat_server_endpoints.remove(endpoint)
+    def on_server_disconnected(self, peer):
+        self.peers.remove(peer)
 
     @log_operation
     def user_registered(self, nick, mail, password):
-        for peer in self.chat_server_endpoints:
-            peer.registered(nick, mail, password)
-        self.direct_clients.add(nick)
-        self.all_clients.add(nick)
+        self.users_online.add(nick)
 
     @log_operation
     def user_logged_in(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.logged_in(nick)
-        self.direct_clients.add(nick)
-        self.all_clients.add(nick)
-
-    @log_operation
-    def user_unregistered(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.unregistered(nick)
-        self.direct_clients.remove(nick)
-        self.all_clients.remove(nick)
+        self.users_online.add(nick)
 
     @log_operation
     def user_logged_out(self, nick):
-        for peer in self.chat_server_endpoints:
-            peer.logged_out(nick)
-        self.direct_clients.remove(nick)
-        self.all_clients.remove(nick)
+        self.users_online.remove(nick)
+
+    @log_operation
+    def user_unregistered(self, nick):
+        self.users_online.remove(nick)
+
+    @log_operation
+    def subscribe(self, channel_name, peer):
+        channel = self.channels.get(channel_name, None)
+        if channel:
+            channel.register_subscriber(peer)
+
+    @log_operation
+    def publish(self, channel_name, message):
+        channel = self.channels.get(channel_name, None)
+        if channel:
+            channel.publish(message)

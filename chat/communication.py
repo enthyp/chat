@@ -20,13 +20,42 @@ class Message:
     string is correct.
     """
 
-    alpha = string.ascii_letters
-    alphanum = string.ascii_letters + string.digits
-    special_chars = '-_[]\`^{}'
+    whitespace = set(string.whitespace)
+    alpha = set(string.ascii_letters)
+
+    num_par = {
+        'REGISTER': 2,
+        'ERR_NUM_PARAMS': 0,
+        'OK_REG': 1,
+        'ERR_TAKEN': 2,
+        'ERR_CLASH_REG': 2,
+        'ERR_INTERNAL': 1,
+
+        'RPL_PWD': 0,
+        'PASSWORD': 1,
+
+        'UNREGISTER': 0,
+        'OK_UNREG': 1,
+
+        'LOGIN': 1,
+        'OK_LOGIN': 1,
+        'ERR_CLASH_LOGIN': 1,
+        'ERR_BAD_PASSWORD': 1,
+
+        'LOGOUT': 0,
+        'OK_LOGOUT': 1,
+
+        'LIST': 0,
+        'NAMES': 1
+    }
 
     def __init__(self, string):
         prefix, command, params = self._parse_message(string)
-        self._validate_message(prefix, command, params)
+
+        correct_num_par = self.num_par.get(command, len(params))
+        if len(params) != correct_num_par:
+            raise BadMessage(f'{command}: bad number of parameters.')
+
         self.prefix = prefix
         self.command = command
         self.params = params
@@ -50,56 +79,26 @@ class Message:
         if not string:
             raise BadMessage('Empty string.')
 
-        if not set(string).issubset(Message.alphanum + Message.special_chars):
-            raise BadMessage('Bad characters.')
-
         prefix, trailing = '', ''
         if string[0] == ':':
             prefix, string = string[1:].split(' ', 1)
         if ':' in string:
             string, trailing = string.split(':', 1)
 
-        if not string:
+        if not string or set(string).issubset(Message.whitespace):
             raise BadMessage('No command.')
 
         args = string.split()
         if trailing:
             args.append(trailing)
 
-        if prefix and not set(prefix).issubset(Message.alphanum + Message.special_chars):
-            raise BadMessage('Bad prefix.')
-
         if not set(args[0]).issubset(Message.alpha):
             raise BadMessage('Bad command.')
 
         return prefix, args[0], args[1:]
 
-    def _validate_message(self, prefix, command, params):
-        """
-        Check if message is correct given its type (the command).
 
-        Most often it amounts to checking if appropriate number
-        of parameters were passed etc. This job is delegated to
-        methods with names starting with '_validate_'.
-        :param prefix:
-        :param command:
-        :param params:
-        :return:
-        """
-        method_name = f'_validate_{command}'
-
-        try:
-            method = getattr(self, method_name)
-            return method(prefix, params)
-        except AttributeError:
-            raise BadMessage(f'Unknown message type: {command}')
-
-    # TODO: finish validation.
-    def _validate_OK_REG(self, message):
-        pass
-
-
-class MessageSource(ABC):
+class MessageSource:
     """
     A message publisher object.
 
@@ -109,20 +108,16 @@ class MessageSource(ABC):
     """
 
     def __init__(self):
-        self.__subscribers = set()
+        self.__subscriber = None
 
     def register_subscriber(self, subscriber):
-        self.__subscribers.add(subscriber)
+        self.__subscriber = subscriber
 
-    def unregister_subscriber(self, subscriber):
-        self.__subscribers.remove(subscriber)
-
-    def unregister_all(self):
-        self.__subscribers = set()
+    def unregister_subscriber(self):
+        self.__subscriber = None
 
     def notify(self, message):
-        for sub in self.__subscribers:
-            sub.handle_message(message)
+        self.__subscriber.handle_message(message)
 
 
 class MessageSubscriber(ABC):
@@ -134,9 +129,6 @@ class MessageSubscriber(ABC):
     named 'msg_COMMAND', e.g. msg_OK_REG, that take a Message as an
     argument and do whatever they want with them.
     """
-
-    def __init__(self, source):
-        source.register_subscriber(self)
 
     @abstractmethod
     def handle_message(self, message):
@@ -171,7 +163,7 @@ class BaseProtocol(basic.LineReceiver, MessageSource):
         self.transport.loseConnection()
 
     def connectionLost(self, reason):
-        self.unregister_all()
+        self.unregister_subscriber()
 
 
 class Endpoint(ABC):
