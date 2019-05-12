@@ -22,12 +22,6 @@ class Dispatcher:
         self.channels = {}
 
     @log_operation
-    def add_peer(self, peer):
-        self.peers.add(peer)
-
-    # TODO: remove peer when done.
-
-    @log_operation
     def is_on(self, nicks):
         return list(set(nicks) & self.users_online)
 

@@ -61,9 +61,12 @@ class ChatClientEndpoint(comm.Endpoint):
         users = ' '.join(users)
         self.send(f'RPL_NAMES {channel} {users}')
 
-    def created(self, channel, creator, users):
+    def channel_created(self, channel, creator, mode, users):
         users = ' '.join(users)
-        self.send(f'OK_CREATED {channel} {creator} {users}')
+        self.send(f'OK_CREATED {channel} {creator} {mode} {users}')
+
+    def bad_mode(self):
+        self.send('ERR_BAD_MODE')
 
     def channel_exists(self, channel):
         self.send(f'ERR_EXISTS {channel}')
@@ -158,7 +161,12 @@ class RegisteringState(peer.State):
 
         try:
             nick_available, mail_available = yield self.db.account_available(nick, mail)
+            if not self.connected:
+                # In case connection was lost while waiting for DB response.
+                return
+
             if nick_available and mail_available:
+
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
@@ -168,8 +176,11 @@ class RegisteringState(peer.State):
                     except failure.Failure:
                         self.endpoint.internal_error('DB error, please try again.')
 
+                def on_request_cancelled(_):
+                    self.log_msg('waiting for password cancelled')
+
                 self.reg_deferred = defer.Deferred()
-                self.reg_deferred.addCallback(on_password_received)
+                self.reg_deferred.addCallbacks(on_password_received, on_request_cancelled)
                 self.endpoint.send_me_password()
             else:
                 if not mail_available:
@@ -181,13 +192,20 @@ class RegisteringState(peer.State):
 
     def msg_PASSWORD(self, message):
         password = message.params[0]
+
         if self.reg_deferred:
             d, self.reg_deferred = self.reg_deferred, None
             d.callback(password)
 
+    def on_connection_closed(self):
+        if self.reg_deferred:
+            d, self.reg_deferred = self.reg_deferred, None
+            d.cancel()
+        super().on_connection_closed()
+
 
 class LoggingInState(peer.State):
-    def __init__(self, protocol, endpoint,db, dispatcher, manager):
+    def __init__(self, protocol, endpoint, db, dispatcher, manager):
         super().__init__(protocol, endpoint, manager)
 
         self.db = db
@@ -198,11 +216,15 @@ class LoggingInState(peer.State):
     @defer.inlineCallbacks
     def msg_LOGIN(self, message):
         nick = message.params[0]
-        self.log_msg(f'{nick}')
+        self.log_msg(f'received {nick}')
 
         try:
-            user_registered = yield self.db.is_user_registered(nick)
-            if user_registered:
+            user_registered = yield self.db.users_registered([nick])
+            if not self.connected:
+                return
+
+            if user_registered and user_registered[0] == nick:
+
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
@@ -223,11 +245,15 @@ class LoggingInState(peer.State):
                     except failure.Failure:
                         self.endpoint.internal_error('DB error, please try again.')
 
+                def on_request_cancelled(_):
+                    self.log_msg('waiting for password cancelled')
+
                 self.login_deferred = defer.Deferred()
-                self.login_deferred.addCallback(on_password_received)
+                self.login_deferred.addCallbacks(on_password_received, on_request_cancelled)
                 self.endpoint.send_me_password()
             else:
                 self.endpoint.no_user(nick)
+                self.manager.state_init()
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
@@ -237,6 +263,12 @@ class LoggingInState(peer.State):
         if self.login_deferred:
             d, self.login_deferred = self.login_deferred, None
             d.callback(password)
+
+    def on_connection_closed(self):
+        if self.login_deferred:
+            d, self.login_deferred = self.login_deferred, None
+            d.cancel()
+        super().on_connection_closed()
 
 
 class LoggedInState(peer.State):
@@ -256,22 +288,92 @@ class LoggedInState(peer.State):
     def msg_UNREGISTER(self, _):
         try:
             yield self.db.delete_user(self.nick)
-            self.endpoint.unregistered(self.nick)
             self.dispatcher.user_unregistered(self.nick)
+            # TODO: delete all his channels (no one else will)!
+            if not self.connected:
+                return
+
+            self.endpoint.unregistered(self.nick)
             self.manager.lose_connection()
         except failure.Failure:
-            self.internal_error('DB error, please try again.')
+            self.endpoint.internal_error('DB error, please try again.')
 
     def msg_ISON(self, message):
         users = message.params
         users_on = self.dispatcher.is_on(users)
         self.endpoint.is_on(users_on)
 
+    @defer.inlineCallbacks
+    def msg_CREATE(self, message):
+        channel_name, mode = message.params[:2]
+        nicks = message.params[2:]
+
+        if mode not in ('priv', 'pub'):
+            self.endpoint.bad_mode()
+            return
+
+        try:
+            valid_nicks = yield self.db.users_registered(nicks)
+            channel_exists = yield self.db.channel_exists(channel_name)
+
+            if not channel_exists:
+                if mode == 'pub':
+                    yield self.db.add_channel(channel_name, self.nick)
+                    # TODO: send invitations!
+                else:
+                    if self.nick not in valid_nicks:
+                        valid_nicks.append(self.nick)
+                    yield self.db.add_channel(channel_name, self.nick, False, valid_nicks)
+
+                if self.connected:
+                    self.endpoint.channel_created(channel_name, self.nick, mode, valid_nicks)
+                # TODO: inform other servers!
+            elif self.connected:
+                self.endpoint.channel_exists(channel_name)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_DELETE(self, message):
+        channel_name = message.params[0]
+
+        try:
+            creator = yield self.db.get_channel_creator(channel_name)
+
+            if creator:
+                if creator == self.nick:
+                    yield self.db.delete_channel(channel_name)
+
+                    # TODO: inform other servers!
+                    if self.connected:
+                        self.endpoint.channel_deleted(channel_name)
+                elif self.connected:
+                    self.endpoint.no_perms('DELETE', 'You are not creator of this channel.')
+            elif self.connected:
+                self.endpoint.no_channel(channel_name)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_LIST(self, _):
+        res = yield self.db.select_all()
+        print(res)
+        try:
+            pub_channels = yield self.db.get_pub_channels()
+            priv_channels = yield self.db.get_priv_channels(self.nick)
+
+            if self.connected:
+                self.endpoint.list(['pub'] + pub_channels)
+                self.endpoint.list(['priv'] + priv_channels)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
 
 class ChatClient(peer.Peer):
-    def state_init(self, message):
+    def state_init(self, message=None):
         self.state = InitialState(self.protocol, self.endpoint, self)
-        self.state.handle_message(message)
+        if message:
+            self.state.handle_message(message)
 
     def state_registering(self, message):
         self.state = RegisteringState(self.protocol, self.endpoint,

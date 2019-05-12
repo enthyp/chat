@@ -18,14 +18,15 @@ class PeerFactory(protocol.Factory):
             self.factory = factory
 
         def handle_message(self, message):
-            self.protocol.unregister_subscriber()
-
             if message.command in ('REGISTER', 'LOGIN'):
                 self.factory.chat_client_connected(self.protocol, message)
             elif message.command == 'CONNECT':
                 self.factory.chat_server_connected(self.protocol, message)
             else:
                 self.factory.bad_message(self.protocol, message)
+
+        def on_connection_closed(self):
+            log.msg('Connection lost before server/client differentiation.')
 
     def __init__(self, db, dispatcher):
         self.db = db
@@ -43,18 +44,14 @@ class PeerFactory(protocol.Factory):
         client_peer = peer.ChatClient(self.db, self.dispatcher, protocol, endpoint)
         client_peer.state_init(message)
 
-        self.dispatcher.add_peer(client_peer)
-
     def chat_server_connected(self, protocol, message):
         endpoint = peer.ChatServerEndpoint(protocol)
         server_peer = peer.ChatServer(self.db, self.dispatcher, protocol, endpoint)
         server_peer.state_init(message)
 
-        self.dispatcher.add_peer(server_peer)
-
     @staticmethod
-    def bad_message(self, protocol, message):
-        protocol.lose_connection()
+    def bad_message(protocol, message):
+        protocol.loseConnection()
         cmd = message.command
         params = message.params
         log.err(f'Received {cmd} with params: {params}')

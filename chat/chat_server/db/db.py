@@ -9,11 +9,13 @@ from chat.chat_server.db import query
 
 
 def log_operation(method):
+    @defer.inlineCallbacks
     @wraps(method)
     def wrapper(*args, **kwargs):
         try:
-            yield method(*args, **kwargs)
+            res = yield method(*args, **kwargs)
             log.msg(f'DB: {method.__name__} CALL SUCCESSFUL')
+            return res
         except failure.Failure as f:
             log.err(f'DB: {method.__name__} CALL FAILURE: {f.getErrorMessage()}')
             raise f
@@ -21,12 +23,16 @@ def log_operation(method):
     return wrapper
 
 
+# TODO: add timeouts on DB operations!
 class DBService(service.Service):
     def __init__(self):
         self._dbpool = None
 
     def startService(self):
-        self._dbpool = adbapi.ConnectionPool(config.db_type, config.db_name, check_same_thread=False)
+        self._dbpool = adbapi.ConnectionPool(config.db_type,
+                                             config.db_name,
+                                             check_same_thread=False,
+                                             cp_openfun=self._enable_fk)
         self._init_db()
 
     def stopService(self):
@@ -34,6 +40,10 @@ class DBService(service.Service):
 
     def _init_db(self):
         self._dbpool.runInteraction(self._create_tables)
+
+    @staticmethod
+    def _enable_fk(con):
+        con.execute('PRAGMA foreign_keys = ON;')
 
     @staticmethod
     def _create_tables(transaction):
@@ -52,22 +62,17 @@ class DBService(service.Service):
             log.err(f'DB: account_available CALL FAILURE: {f.getErrorMessage()}')
             raise
 
+    @log_operation
     @defer.inlineCallbacks
-    def is_user_registered(self, nick):
-        try:
-            nicks = yield self._dbpool.runQuery(query.select_nick, (nick,))
-            log.msg('DB: is_user_registered CALL SUCCESSFUL')
-            return nicks != []
-        except failure.Failure as f:
-            log.err(f'DB: is_user_registered CALL FAILURE: {f.getErrorMessage()}')
-            raise
+    def users_registered(self, nicks):
+        select = query.select_nicks(len(nicks))
+        result = yield self._dbpool.runQuery(select, nicks)
+        return [r[0] for r in result]
 
-    @defer.inlineCallbacks
     @log_operation
     def add_user(self, nick, mail, password):
         return self._dbpool.runOperation(query.insert_user, (nick, mail, password))
 
-    @defer.inlineCallbacks
     @log_operation
     def delete_user(self, nick):
         return self._dbpool.runOperation(query.delete_user, (nick,))
@@ -85,3 +90,52 @@ class DBService(service.Service):
         except failure.Failure as f:
             log.err(f'DB: password_correct FAILURE: {f.getErrorMessage()}')
             raise
+
+    @log_operation
+    @defer.inlineCallbacks
+    def channel_exists(self, channel_name):
+        channels = yield self._dbpool.runQuery(query.select_channel, (channel_name,))
+        return len(channels) != 0
+
+    @staticmethod
+    def _add_members(transaction, member_tuples):
+        transaction.executemany(query.insert_member, member_tuples)
+
+    @log_operation
+    @defer.inlineCallbacks
+    def add_channel(self, channel_name, creator, public=True, nicks=None):
+        yield self._dbpool.runOperation(query.insert_channel, (channel_name, creator, int(public)))
+
+        if nicks and not public:
+            member_tuples = [(nick, channel_name) for nick in nicks]
+            yield self._dbpool.runInteraction(self._add_members, member_tuples)
+
+    @log_operation
+    def delete_channel(self, channel_name):
+        return self._dbpool.runOperation(query.delete_channel, (channel_name,))
+
+    @log_operation
+    @defer.inlineCallbacks
+    def get_channel_creator(self, channel_name):
+        creator = yield self._dbpool.runQuery(query.select_creator, (channel_name,))
+
+        if creator:
+            return creator[0][0]
+        else:
+            return None
+
+    @log_operation
+    @defer.inlineCallbacks
+    def get_pub_channels(self):
+        channels = yield self._dbpool.runQuery(query.select_pub_channels)
+        return [c[0] for c in channels]
+
+    @log_operation
+    @defer.inlineCallbacks
+    def get_priv_channels(self, nick):
+        channels = yield self._dbpool.runQuery(query.select_priv_channels, (nick,))
+        return [c[0] for c in channels]
+
+    @log_operation
+    def select_all(self):
+        return self._dbpool.runQuery(query.select_all)

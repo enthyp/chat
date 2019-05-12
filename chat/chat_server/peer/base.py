@@ -13,12 +13,12 @@ class Peer:
         self.state = None
 
     def lose_connection(self):
-        # TODO: must remove Peer entirely.
+        self.protocol.unregister_subscriber()
         self.protocol.loseConnection()
+        # TODO: unregister myself from Dispatcher!
 
-    def __del__(self):
-        # TODO: for now.
-        log.msg('Peer taken out with trash.')
+    def on_connection_closed(self):
+        self.protocol.unregister_subscriber()
 
 
 class State(comm.MessageSubscriber):
@@ -27,6 +27,13 @@ class State(comm.MessageSubscriber):
         protocol.register_subscriber(self)
         self.endpoint = endpoint
         self.manager = manager
+        self.connected = True
+        self.log_msg('starting...')
+
+    def on_connection_closed(self):
+        self.connected = False
+        self.manager.on_connection_closed()
+        self.log_msg('connection closed')
 
     def handle_message(self, message):
         method_name = f'msg_{message.command}'
@@ -39,7 +46,6 @@ class State(comm.MessageSubscriber):
                 method(message)
             except ValueError:
                 self.log_err('wrong number of params')
-                # TODO: send some message back?
 
     def msg_unknown(self, message):
         cmd = message.command

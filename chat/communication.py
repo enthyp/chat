@@ -117,22 +117,32 @@ class MessageSource:
         self.__subscriber = None
 
     def notify(self, message):
-        self.__subscriber.handle_message(message)
+        if self.__subscriber:
+            self.__subscriber.handle_message(message)
+
+    def connection_closed(self):
+        if self.__subscriber:
+            self.__subscriber.on_connection_closed()
 
 
 class MessageSubscriber(ABC):
     """
     A subscriber to a MessageSource.
-
-    It's 'handle_message' method is called with beautifully correct
-    Messages. All an implementation should do is implement methods
-    named 'msg_COMMAND', e.g. msg_OK_REG, that take a Message as an
-    argument and do whatever they want with them.
     """
 
     @abstractmethod
     def handle_message(self, message):
-        pass
+        """
+        This method is called with correct Messages when they
+        appear at MessageSource.
+        """
+
+    @abstractmethod
+    def on_connection_closed(self):
+        """
+        This method is called when connection is closed for whatever
+        reason.
+        """
 
 
 class BaseProtocol(basic.LineReceiver, MessageSource):
@@ -163,7 +173,7 @@ class BaseProtocol(basic.LineReceiver, MessageSource):
         self.transport.loseConnection()
 
     def connectionLost(self, reason):
-        self.unregister_subscriber()
+        self.connection_closed()
 
 
 class Endpoint(ABC):
