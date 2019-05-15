@@ -289,7 +289,7 @@ class LoggedInState(peer.State):
         try:
             yield self.db.delete_user(self.nick)
             self.dispatcher.user_unregistered(self.nick)
-            # TODO: delete all his channels (no one else will)!
+
             if not self.connected:
                 return
 
@@ -328,6 +328,7 @@ class LoggedInState(peer.State):
                 if self.connected:
                     self.endpoint.channel_created(channel_name, self.nick, mode, valid_nicks)
                 # TODO: inform other servers!
+                # TODO: add new Channel to Dispatcher!
             elif self.connected:
                 self.endpoint.channel_exists(channel_name)
         except failure.Failure:
