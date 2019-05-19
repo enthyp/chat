@@ -171,8 +171,11 @@ class RegisteringState(peer.State):
                 def on_password_received(password):
                     try:
                         yield self.db.add_user(nick, mail, password)
+                        self.endpoint.registered(nick, mail, password)
+                        msg = comm.Message(command='OK_REG', params=[nick, mail, password])
+                        self.dispatcher.publish('servers', self.manager, msg)
+
                         self.manager.state_logged_in(nick)
-                        self.dispatcher.user_registered(nick, mail, password)
                     except failure.Failure:
                         self.endpoint.internal_error('DB error, please try again.')
 
@@ -231,7 +234,6 @@ class LoggingInState(peer.State):
                         password_correct = yield self.db.password_correct(nick, password)
                         if password_correct:
                             self.manager.state_logged_in(nick)
-                            self.dispatcher.user_logged_in(nick)
                         else:
                             self.password_countdown -= 1
 
@@ -279,9 +281,19 @@ class LoggedInState(peer.State):
         self.dispatcher = dispatcher
         self.nick = nick
 
+        self.endpoint.logged_in(nick)
+
+        msg = comm.Message(command='OK_LOGIN', params=[nick])
+        self.dispatcher.publish('servers', self.manager, msg)
+        self.dispatcher.add_user(nick)
+
     def msg_LOGOUT(self, _):
         self.endpoint.logged_out(self.nick)
-        self.dispatcher.user_logged_out(self.nick)
+
+        msg = comm.Message(command='OK_LOGOUT', params=[self.nick])
+        self.dispatcher.publish('servers', self.manager, msg)
+        self.dispatcher.remove_user(self.nick)
+
         self.manager.lose_connection()
 
     @defer.inlineCallbacks
@@ -294,6 +306,11 @@ class LoggedInState(peer.State):
                 return
 
             self.endpoint.unregistered(self.nick)
+
+            msg = comm.Message(command='OK_UNREG', params=[self.nick])
+            self.dispatcher.publish('servers', self.manager, msg)
+            self.dispatcher.remove_user(self.nick)
+
             self.manager.lose_connection()
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
@@ -327,8 +344,9 @@ class LoggedInState(peer.State):
 
                 if self.connected:
                     self.endpoint.channel_created(channel_name, self.nick, mode, valid_nicks)
-                # TODO: inform other servers!
-                # TODO: add new Channel to Dispatcher!
+
+                msg = comm.Message(command='OK_CREATED', params=[channel_name, self.nick, mode, valid_nicks])
+                self.dispatcher.publish('servers', self.manager, msg)
             elif self.connected:
                 self.endpoint.channel_exists(channel_name)
         except failure.Failure:
@@ -345,9 +363,12 @@ class LoggedInState(peer.State):
                 if creator == self.nick:
                     yield self.db.delete_channel(channel_name)
 
-                    # TODO: inform other servers!
                     if self.connected:
                         self.endpoint.channel_deleted(channel_name)
+
+                    msg = comm.Message(command='OK_DELETED', params=[channel_name])
+                    self.dispatcher.publish('servers', self.manager, msg)
+                    self.dispatcher.remove_channel(channel_name)
                 elif self.connected:
                     self.endpoint.no_perms('DELETE', 'You are not creator of this channel.')
             elif self.connected:
@@ -358,7 +379,7 @@ class LoggedInState(peer.State):
     @defer.inlineCallbacks
     def msg_LIST(self, _):
         res = yield self.db.select_all()
-        print(res)
+
         try:
             pub_channels = yield self.db.get_pub_channels()
             priv_channels = yield self.db.get_priv_channels(self.nick)
@@ -368,6 +389,25 @@ class LoggedInState(peer.State):
                 self.endpoint.list(['priv'] + priv_channels)
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
+
+    def msg_JOIN(self, message):
+        channel_name = message.params[0]
+
+        try:
+            # TODO: if private channel - check if user can join in isMember table
+            # TODO: else just add user to the channel on Dispatcher and broadcast
+            # that fact.
+            # TODO: gotta figure out how to build the Dispatcher properly.
+            # upon joining - change state to conversation and lookout for MSG & \LEAVE.
+            pass
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    def msg_LEAVE(self, message):
+        pass
+
+    def msg_MSG(self, message):
+        pass
 
 
 class ChatClient(peer.Peer):

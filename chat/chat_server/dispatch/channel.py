@@ -1,14 +1,18 @@
 class Channel:
-    def __init__(self, name):
+    def __init__(self, name=None):
         self.name = name
-        self.subscribers = set()
+        self.peers = set()
+        self.users = set()
 
-    def register_subscriber(self, subscriber):
-        self.subscribers.add(subscriber)
+    def register_peer(self, peer):
+        self.peers.add(peer)
 
-    def unregister_subscriber(self, subscriber):
-        self.subscribers.remove(subscriber)
+    def unregister_peer(self, peer):
+        self.peers.remove(peer)
 
-    def publish(self, message):
-        for sub in self.subscribers:
-            sub.handle_message(self.name, message)
+    def publish(self, author, message):
+        for peer in self.peers - {author}:
+            peer.receive(message)
+
+    def names(self):
+        return list(self.users)

@@ -12,6 +12,9 @@ class Peer:
         self.endpoint = endpoint
         self.state = None
 
+    def receive(self, message):
+        self.state.handle_broadcast(message)
+
     def lose_connection(self):
         self.protocol.unregister_subscriber()
         self.protocol.loseConnection()
@@ -50,7 +53,21 @@ class State(comm.MessageSubscriber):
     def msg_unknown(self, message):
         cmd = message.command
         params = message.params
-        self.log_err(f'received {cmd} with params: {params}')
+        self.log_err(f'received message {cmd} with params: {params}')
+
+    def handle_broadcast(self, message):
+        method_name = f'brd_{message.command}'
+        method = getattr(self, method_name, None)
+
+        if method is None:
+            self.brd_unknown(message)
+        else:
+            method(message)
+
+    def brd_unknown(self, message):
+        cmd = message.command
+        params = message.params
+        self.log_err(f'received broadcast {cmd} with params: {params}')
 
     def log_msg(self, communicate):
         name = self.__class__.__name__

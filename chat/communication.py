@@ -49,18 +49,19 @@ class Message:
         'NAMES': 1
     }
 
-    def __init__(self, string):
-        prefix, command, params = self._parse_message(string)
+    def __init__(self, string=None, prefix=None, command=None, params=None):
+        if string:
+            prefix, command, params = self._parse_message(string)
 
-        correct_num_par = self.num_par.get(command, len(params))
-        if len(params) != correct_num_par:
-            raise BadMessage(f'{command}: bad number of parameters.')
+            correct_num_par = self.num_par.get(command, len(params))
+            if len(params) != correct_num_par:
+                raise BadMessage(f'{command}: bad number of parameters.')
 
         self.prefix = prefix
         self.command = command
         self.params = params
 
-    def __str__(self):  # TODO: necessary?
+    def __str__(self):
         string = ' '.join([self.command] + self.params)
         if self.prefix:
             string = f':{self.prefix} {string}'

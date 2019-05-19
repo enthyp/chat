@@ -15,56 +15,59 @@ def log_operation(method):
 
 class Dispatcher:
     def __init__(self):
-        # TODO: maybe we should have a separate online users registry (users online per channel also, etc.)?
-        self.users_online = set()
-        self.peers = set()
-        self.server_channel = dispatch.Channel('chat_servers')
-        self.channels = {}
+        self.users = set()
+        self.direct_users = {}  # nick -> Peer
+        self.channels = {'servers': dispatch.Channel()}
+
+    @log_operation
+    def add_user(self, nick):
+        self.users.add(nick)
+
+    @log_operation
+    def remove_user(self, nick):
+        self.users.remove(nick)
+
+    @log_operation
+    def add_server(self, server_peer):
+        self.channels['servers'].register_peer(server_peer)
+
+    @log_operation
+    def remove_server(self, server_peer):
+        self.channels['servers'].unregister_peer(server_peer)
+
+    @log_operation
+    def add_channel(self, channel_name, replace=True):
+        if channel_name not in self.channels.keys() or replace:
+            self.channels[channel_name] = dispatch.Channel(channel_name)
+
+    @log_operation
+    def remove_channel(self, channel_name):
+        try:
+            del self.channels[channel_name]
+        except KeyError:
+            pass
 
     @log_operation
     def is_on(self, nicks):
-        return list(set(nicks) & self.users_online)
+        return list(set(nicks) & self.users)
 
     @log_operation
-    def on_user_logged_in(self, nick):
-        self.users_online.add(nick)
-
-    @log_operation
-    def on_user_logged_out(self, nick):
-        self.users_online.remove(nick)
-
-    @log_operation
-    def on_server_connected(self, peer):
-        self.peers.add(peer)
-
-    @log_operation
-    def on_server_disconnected(self, peer):
-        self.peers.remove(peer)
-
-    @log_operation
-    def user_registered(self, nick, mail, password):
-        self.users_online.add(nick)
-
-    @log_operation
-    def user_logged_in(self, nick):
-        self.users_online.add(nick)
-
-    @log_operation
-    def user_logged_out(self, nick):
-        self.users_online.remove(nick)
-
-    @log_operation
-    def user_unregistered(self, nick):
-        self.users_online.remove(nick)
+    def names(self, channel_name):
+        channel = self.channels.get(channel_name, None)
+        return channel.names() if channel else None
 
     @log_operation
     def subscribe(self, channel_name, peer):
         channel = self.channels.get(channel_name, None)
         if channel:
-            channel.register_subscriber(peer)
+            channel.register_peer(peer)
 
     @log_operation
-    def publish(self, channel_name, message):
+    def publish(self, channel_name, author, message):
         channel = self.channels.get(channel_name, None)
         if channel:
-            channel.publish(message)
+            channel.publish(author, message)
+
+    @log_operation
+    def direct(self, nick, message):
+        self.direct_users[nick].receive(message)
