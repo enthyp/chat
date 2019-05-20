@@ -2,6 +2,8 @@ import os
 from twisted.protocols import basic
 from twisted.internet import stdio
 
+from chat import util
+
 
 class IOProtocol(basic.LineReceiver):
     delimiter = os.linesep.encode('utf-8')
@@ -17,6 +19,9 @@ class IOProtocol(basic.LineReceiver):
         line = line.encode('utf-8', errors='ignore')
         super().sendLine(line)
 
+    def lose_connection(self):
+        self.transport.loseConnection()
+
 
 class CMDLine:
     def __init__(self):
@@ -30,5 +35,10 @@ class CMDLine:
         if self.client:
             self.client.handle_input(line)
 
-    def send(self, line):
+    def send(self, line, prefix='', color='WHITE'):
+        line = util.mark(prefix + line, color)
         self.io.protocol.sendLine(line)
+
+    def lose_connection(self):
+        self.io.protocol.lose_connection()
+        self.io.loseConnection()

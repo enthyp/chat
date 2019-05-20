@@ -419,10 +419,6 @@ class LoggedInState(peer.State):
                 msg = comm.Message(command='OK_JOINED', params=[channel_name, self.nick])
                 self.dispatcher.publish('servers', self.manager, msg)
 
-                content = util.mark(f'{self.nick} joins the channel.', 'GREEN')
-                msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-                self.dispatcher.publish(channel_name, self.manager, msg)
-
                 self.manager.state_conversation(self.nick, channel_name)
             else:
                 if self.connected:
@@ -449,6 +445,10 @@ class ConversationState(peer.State):
 
         self.endpoint.user_joined(channel_name, nick)
         self.dispatcher.subscribe(channel_name, self.manager, self.nick)
+
+        content = util.mark(f'{self.nick} joins the channel.', 'GREEN')
+        msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+        self.dispatcher.publish(channel_name, self.manager, msg)
 
     def msg_NAMES(self, _):
         names = self.dispatcher.names(self.channel)

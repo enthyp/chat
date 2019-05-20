@@ -26,7 +26,7 @@ class Message:
     num_par = {
         'REGISTER': 2,
         'ERR_NUM_PARAMS': 0,
-        'OK_REG': 1,
+        'OK_REG': 3,
         'ERR_TAKEN': 2,
         'ERR_CLASH_REG': 2,
         'ERR_INTERNAL': 1,
@@ -47,7 +47,7 @@ class Message:
 
         'LIST': 0,
         'NAMES': 0,
-        'HELP': 0
+        'HELP': 0,
     }
 
     def __init__(self, string=None, prefix=None, command=None, params=None):
