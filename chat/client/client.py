@@ -296,7 +296,7 @@ class LoggedInState(State):
         content = ', '.join(channels[1:])
 
         if channels[0] == 'priv':
-            content = 'Private channels:' + content
+            content = 'Private channels: ' + content
         else:
             content = 'Public channels: ' + content
 
@@ -336,8 +336,11 @@ class LoggedInState(State):
         self.iface.send('Incorrect channel mode (either "priv" or "pub")!', color='RED')
 
     def cmd_DELETE(self, cmd):
-        channel = cmd.params[0]
-        self.endpoint.delete(channel)
+        try:
+            channel = cmd.params[0]
+            self.endpoint.delete(channel)
+        except IndexError:
+            self.iface.send('Pass channel name.', color='RED')
 
     def msg_OK_DELETED(self, message):
         channel = message.params[0]
