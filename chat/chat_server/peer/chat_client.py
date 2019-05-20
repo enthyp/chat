@@ -83,23 +83,14 @@ class ChatClientEndpoint(comm.Endpoint):
     def no_perms(self, perm_type, reason):
         self.send(f'ERR_NO_PERM {perm_type} :{reason}')
 
-    def joined(self, channel):
-        self.send(f'OK_JOINED {channel}')
-
     def user_joined(self, channel, user):
-        self.send(f'JOINED {channel} {user}')
-
-    def left(self, channel):
-        self.send(f'OK_LEFT {channel}')
+        self.send(f'OK_JOINED {channel} {user}')
 
     def user_left(self, channel, user):
-        self.send(f'LEFT {channel} {user}')
-
-    def quit(self, channel):
-        self.send(f'OK_QUIT {channel}')
+        self.send(f'OK_LEFT {channel} {user}')
 
     def user_quit(self, channel, user):
-        self.send(f'USER_QUIT {channel} {user}')
+        self.send(f'OK_QUIT {channel} {user}')
 
     def added(self, channel, users):
         users = ' '.join(users)
@@ -274,18 +265,19 @@ class LoggingInState(peer.State):
 
 
 class LoggedInState(peer.State):
-    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick):
+    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick, starting=True):
         super().__init__(protocol, endpoint, manager)
 
         self.db = db
         self.dispatcher = dispatcher
         self.nick = nick
 
-        self.endpoint.logged_in(nick)
+        if starting:
+            self.endpoint.logged_in(nick)
 
-        msg = comm.Message(command='OK_LOGIN', params=[nick])
-        self.dispatcher.publish('servers', self.manager, msg)
-        self.dispatcher.add_user(nick)
+            msg = comm.Message(command='OK_LOGIN', params=[nick])
+            self.dispatcher.publish('servers', self.manager, msg)
+            self.dispatcher.add_user(nick)
 
     def msg_LOGOUT(self, _):
         self.endpoint.logged_out(self.nick)
@@ -300,17 +292,15 @@ class LoggedInState(peer.State):
     def msg_UNREGISTER(self, _):
         try:
             yield self.db.delete_user(self.nick)
-            self.dispatcher.user_unregistered(self.nick)
-
-            if not self.connected:
-                return
-
-            self.endpoint.unregistered(self.nick)
 
             msg = comm.Message(command='OK_UNREG', params=[self.nick])
             self.dispatcher.publish('servers', self.manager, msg)
             self.dispatcher.remove_user(self.nick)
 
+            if not self.connected:
+                return
+
+            self.endpoint.unregistered(self.nick)
             self.manager.lose_connection()
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
@@ -363,12 +353,16 @@ class LoggedInState(peer.State):
                 if creator == self.nick:
                     yield self.db.delete_channel(channel_name)
 
+                    msg = comm.Message(prefix='INFO', command='MSG', params=['Channel deleted.'])
+                    self.dispatcher.publish(channel_name, self.manager, msg)
+                    msg = comm.Message(command='OK_DELETED', params=[channel_name])
+                    self.dispatcher.publish(channel_name, self.manager, msg, to='clients')
+
+                    self.dispatcher.remove_channel(channel_name)
+                    self.dispatcher.publish('servers', self.manager, msg)
+
                     if self.connected:
                         self.endpoint.channel_deleted(channel_name)
-
-                    msg = comm.Message(command='OK_DELETED', params=[channel_name])
-                    self.dispatcher.publish('servers', self.manager, msg)
-                    self.dispatcher.remove_channel(channel_name)
                 elif self.connected:
                     self.endpoint.no_perms('DELETE', 'You are not creator of this channel.')
             elif self.connected:
@@ -378,8 +372,6 @@ class LoggedInState(peer.State):
 
     @defer.inlineCallbacks
     def msg_LIST(self, _):
-        res = yield self.db.select_all()
-
         try:
             pub_channels = yield self.db.get_pub_channels()
             priv_channels = yield self.db.get_priv_channels(self.nick)
@@ -390,24 +382,79 @@ class LoggedInState(peer.State):
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
+    @defer.inlineCallbacks
     def msg_JOIN(self, message):
         channel_name = message.params[0]
 
         try:
-            # TODO: if private channel - check if user can join in isMember table
-            # TODO: else just add user to the channel on Dispatcher and broadcast
-            # that fact.
-            # TODO: gotta figure out how to build the Dispatcher properly.
-            # upon joining - change state to conversation and lookout for MSG & \LEAVE.
+            mode = yield self.db.get_channel_mode(channel_name)
+
+            if mode:
+                if mode == 'priv':
+                    is_member = yield self.db.is_member(self.nick, channel_name)
+                    if not is_member:
+                        self.endpoint.no_perms('JOIN', 'You are not a member of this channel.')
+                        return
+
+                self.dispatcher.add_channel(channel_name, replace=False)
+
+                msg = comm.Message(command='OK_JOINED', params=[channel_name, self.nick])
+                self.dispatcher.publish('servers', self.manager, msg)
+
+                msg = comm.Message(prefix='INFO', command='MSG', params=[f'{self.nick} joins the channel.'])
+                self.dispatcher.publish(channel_name, self.manager, msg)
+
+                self.manager.state_conversation(self.nick, channel_name)
+            else:
+                if self.connected:
+                    self.endpoint.no_channel(channel_name)
             pass
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
-    def msg_LEAVE(self, message):
+    def msg_QUIT(self, message):
+        channels = message.params
+        # TODO: quit means: give up membership (priv channels)
         pass
 
+
+class ConversationState(peer.State):
+
+    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick, channel_name):
+        super().__init__(protocol, endpoint, manager)
+
+        self.db = db
+        self.dispatcher = dispatcher
+        self.nick = nick
+        self.channel = channel_name
+
+        self.endpoint.user_joined(channel_name, nick)
+        self.dispatcher.subscribe(channel_name, self.manager, self.nick)
+
+    def msg_NAMES(self, _):
+        names = self.dispatcher.names(self.channel)
+        self.endpoint.names(self.channel, names)
+
     def msg_MSG(self, message):
-        pass
+        message.prefix = self.nick
+        self.dispatcher.publish(self.channel, self.manager, message)
+
+    def msg_LEAVE(self, _):
+        msg = comm.Message(prefix='INFO', command='MSG', params=[f'{self.nick} left the channel.'])
+        self.dispatcher.publish(self.channel, self.manager, msg)
+        self.dispatcher.unsubscribe(self.channel, self.manager, self.nick)
+
+        self.endpoint.user_left(self.channel, self.nick)
+        self.manager.state_logged_in(self.nick, starting=False)
+
+    def brd_MSG(self, message):
+        author = message.prefix
+        content = message.params[-1]
+        self.endpoint.msg(author, self.channel, content)
+
+    def brd_OK_DELETED(self, _):
+        self.endpoint.channel_deleted(self.channel)
+        self.manager.state_logged_in(self.nick, starting=False)
 
 
 class ChatClient(peer.Peer):
@@ -426,7 +473,12 @@ class ChatClient(peer.Peer):
                                     self.db, self.dispatcher, self)
         self.state.handle_message(message)
 
-    def state_logged_in(self, nick):
+    def state_logged_in(self, nick, starting=True):
         self.state = LoggedInState(self.protocol, self.endpoint,
                                    self.db, self.dispatcher, self,
-                                   nick)
+                                   nick, starting)
+
+    def state_conversation(self, nick, channel):
+        self.state = ConversationState(self.protocol, self.endpoint,
+                                       self.db, self.dispatcher, self,
+                                       nick, channel)

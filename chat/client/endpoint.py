@@ -54,8 +54,8 @@ class ServerEndpoint(Endpoint):
         nick_list = ' '.join(nicks)
         self.send(f'KICK {channel} {nick_list}')
 
-    def names(self, channel):
-        self.send(f'NAMES {channel}')
+    def names(self):
+        self.send(f'NAMES')
 
     def msg(self, channel, content):
         self.send(f'MSG {channel} :{content}')

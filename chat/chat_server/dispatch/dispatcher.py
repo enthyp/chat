@@ -16,7 +16,6 @@ def log_operation(method):
 class Dispatcher:
     def __init__(self):
         self.users = set()
-        self.direct_users = {}  # nick -> Peer
         self.channels = {'servers': dispatch.Channel()}
 
     @log_operation
@@ -57,17 +56,19 @@ class Dispatcher:
         return channel.names() if channel else None
 
     @log_operation
-    def subscribe(self, channel_name, peer):
+    def subscribe(self, channel_name, peer, nick=None):
         channel = self.channels.get(channel_name, None)
         if channel:
-            channel.register_peer(peer)
+            channel.register_peer(peer, nick)
 
     @log_operation
-    def publish(self, channel_name, author, message):
+    def unsubscribe(self, channel_name, peer, nick=None):
         channel = self.channels.get(channel_name, None)
         if channel:
-            channel.publish(author, message)
+            channel.unregister_peer(peer, nick)
 
     @log_operation
-    def direct(self, nick, message):
-        self.direct_users[nick].receive(message)
+    def publish(self, channel_name, author, message, to='all'):
+        channel = self.channels.get(channel_name, None)
+        if channel:
+            channel.publish(author, message, to)

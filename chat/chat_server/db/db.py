@@ -126,6 +126,22 @@ class DBService(service.Service):
 
     @log_operation
     @defer.inlineCallbacks
+    def get_channel_mode(self, channel_name):
+        mode = yield self._dbpool.runQuery(query.select_mode, (channel_name,))
+
+        if mode:
+            return 'pub' if mode[0][0] == 1 else 'priv'
+        else:
+            return None
+
+    @log_operation
+    @defer.inlineCallbacks
+    def is_member(self, nick, channel_name):
+        result = yield self._dbpool.runQuery(query.select_is_member, (nick, channel_name))
+        return result != []
+
+    @log_operation
+    @defer.inlineCallbacks
     def get_pub_channels(self):
         channels = yield self._dbpool.runQuery(query.select_pub_channels)
         return [c[0] for c in channels]
@@ -136,6 +152,3 @@ class DBService(service.Service):
         channels = yield self._dbpool.runQuery(query.select_priv_channels, (nick,))
         return [c[0] for c in channels]
 
-    @log_operation
-    def select_all(self):
-        return self._dbpool.runQuery(query.select_all)

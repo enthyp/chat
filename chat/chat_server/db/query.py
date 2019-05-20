@@ -51,6 +51,14 @@ select_creator = ('SELECT creator '
                   'FROM channel '
                   'WHERE name = ?')
 
+select_mode = ('SELECT public '
+               'FROM channel '
+               'WHERE name = ?')
+
+select_is_member = ('SELECT user, channel '
+                    'FROM is_member '
+                    'WHERE user = ? AND channel = ?')
+
 select_pub_channels = ('SELECT name '
                        'FROM channel '
                        'WHERE public = 1')
@@ -75,5 +83,3 @@ delete_user = ('DELETE FROM user '
 
 delete_channel = ('DELETE FROM channel '
                   'WHERE name = ?')
-
-select_all = 'SELECT * FROM is_member'

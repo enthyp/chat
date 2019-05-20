@@ -46,7 +46,7 @@ class Message:
         'OK_LOGOUT': 1,
 
         'LIST': 0,
-        'NAMES': 1
+        'NAMES': 0
     }
 
     def __init__(self, string=None, prefix=None, command=None, params=None):
