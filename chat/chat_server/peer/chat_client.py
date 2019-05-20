@@ -1,7 +1,8 @@
 from twisted.python import failure
-import twisted.internet.defer as defer
+from twisted.internet import defer
 
 from chat import communication as comm
+from chat import util
 from chat.chat_server import peer
 
 
@@ -71,6 +72,9 @@ class ChatClientEndpoint(comm.Endpoint):
     def channel_exists(self, channel):
         self.send(f'ERR_EXISTS {channel}')
 
+    def bad_name(self):
+        self.send('ERR_BAD_NAME')
+
     def channel_clashed(self, channel):
         self.send(f'ERR_CLASH_CREAT {channel}')
 
@@ -122,6 +126,12 @@ class ChatClientEndpoint(comm.Endpoint):
 
     def connection_closed(self, message):
         self.send(f'CLOSED :{message}')
+
+    def help(self):
+        self.send('RPL_HELP :COMMANDS:')
+        self.send('RPL_HELP : -> LIST')
+        self.send('RPL_HELP : -> CREATE')
+        self.send('RPL_HELP : -> DELETE and so on + descriptions...')
 
 
 class InitialState(peer.State):
@@ -310,6 +320,9 @@ class LoggedInState(peer.State):
         users_on = self.dispatcher.is_on(users)
         self.endpoint.is_on(users_on)
 
+    def msg_HELP(self, _):
+        self.endpoint.help()
+
     @defer.inlineCallbacks
     def msg_CREATE(self, message):
         channel_name, mode = message.params[:2]
@@ -317,6 +330,10 @@ class LoggedInState(peer.State):
 
         if mode not in ('priv', 'pub'):
             self.endpoint.bad_mode()
+            return
+
+        if channel_name[0] != '#':
+            self.endpoint.bad_name()
             return
 
         try:
@@ -353,7 +370,8 @@ class LoggedInState(peer.State):
                 if creator == self.nick:
                     yield self.db.delete_channel(channel_name)
 
-                    msg = comm.Message(prefix='INFO', command='MSG', params=['Channel deleted.'])
+                    content = util.mark('Channel deleted.', 'RED')
+                    msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                     self.dispatcher.publish(channel_name, self.manager, msg)
                     msg = comm.Message(command='OK_DELETED', params=[channel_name])
                     self.dispatcher.publish(channel_name, self.manager, msg, to='clients')
@@ -401,7 +419,8 @@ class LoggedInState(peer.State):
                 msg = comm.Message(command='OK_JOINED', params=[channel_name, self.nick])
                 self.dispatcher.publish('servers', self.manager, msg)
 
-                msg = comm.Message(prefix='INFO', command='MSG', params=[f'{self.nick} joins the channel.'])
+                content = util.mark(f'{self.nick} joins the channel.', 'GREEN')
+                msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                 self.dispatcher.publish(channel_name, self.manager, msg)
 
                 self.manager.state_conversation(self.nick, channel_name)
@@ -440,7 +459,8 @@ class ConversationState(peer.State):
         self.dispatcher.publish(self.channel, self.manager, message)
 
     def msg_LEAVE(self, _):
-        msg = comm.Message(prefix='INFO', command='MSG', params=[f'{self.nick} left the channel.'])
+        content = util.mark(f'{self.nick} left the channel.', 'GREEN')
+        msg = comm.Message(prefix='INFO', command='MSG', params=[content])
         self.dispatcher.publish(self.channel, self.manager, msg)
         self.dispatcher.unsubscribe(self.channel, self.manager, self.nick)
 

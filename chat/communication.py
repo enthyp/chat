@@ -21,7 +21,7 @@ class Message:
     """
 
     whitespace = set(string.whitespace)
-    alpha = set(string.ascii_letters)
+    alpha = set(string.ascii_letters) | set('_')
 
     num_par = {
         'REGISTER': 2,
@@ -46,7 +46,8 @@ class Message:
         'OK_LOGOUT': 1,
 
         'LIST': 0,
-        'NAMES': 0
+        'NAMES': 0,
+        'HELP': 0
     }
 
     def __init__(self, string=None, prefix=None, command=None, params=None):
