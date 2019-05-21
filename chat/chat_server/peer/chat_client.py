@@ -107,6 +107,9 @@ class ChatClientEndpoint(comm.Endpoint):
     def no_user(self, user):
         self.send(f'ERR_NOUSER {user}')
 
+    def not_member(self, user, channel):
+        self.send(f'ERR_NOT_MEMBER {user} {channel}')
+
     def kicked(self, channel, users):
         users = ' '.join(users)
         self.send(f'OK_KICKED {channel} {users}')
@@ -118,8 +121,11 @@ class ChatClientEndpoint(comm.Endpoint):
     def msg(self, from_user, channel, content):
         self.send(f':{from_user} MSG {channel} :{content}')
 
-    def notify(self, reason, notification):
-        self.send(f'NOTIFY {reason} :{notification}')
+    def notify(self, who, notifies, type, notification):
+        self.send(f'NOTIFY {who} {notifies} {type} :{notification}')
+
+    def bad_operation(self, operation):
+        self.send(f'ERR_BAD_OP :{operation}')
 
     def warn(self, warning):
         self.send(f'WARN :{warning}')
@@ -129,9 +135,17 @@ class ChatClientEndpoint(comm.Endpoint):
 
     def help(self):
         self.send('RPL_HELP :COMMANDS:')
-        self.send('RPL_HELP : -> LIST')
-        self.send('RPL_HELP : -> CREATE')
-        self.send('RPL_HELP : -> DELETE and so on + descriptions...')
+        self.send('RPL_HELP : -> LIST - list all available channels')
+        self.send('RPL_HELP : -> ISON [nick1 nick2...] - check if users are online')
+        self.send('RPL_HELP : -> CREATE #channel_name priv/pub [nick1 nick2...] - create a channel')
+        self.send('RPL_HELP : -> DELETE #channel_name - delete a channel')
+        self.send('RPL_HELP : -> JOIN #channel_name - join a channel')
+        self.send('RPL_HELP : -> ADD #channel_name nick1 [nick2...] - add members to a private channel')
+        self.send('RPL_HELP : -> KICK #channel_name nick1 [nick2...] - kick members from a private channel')
+        self.send('RPL_HELP : -> QUIT #channel_name - cancel private channel membership')
+        self.send('RPL_HELP : -> INVITE #channel_name nick1 [nick2...] - send invitations to join public channel')
+        self.send('RPL_HELP : -> LOGOUT - leave the chat')
+        self.send('RPL_HELP : -> UNREGISTER - delete current account and leave the chat')
 
 
 class InitialState(peer.State):
@@ -228,7 +242,7 @@ class LoggingInState(peer.State):
                 return
 
             if user_registered and user_registered[0] == nick:
-
+                # TODO: how many simultaneous logged in sessions??!
                 @defer.inlineCallbacks
                 def on_password_received(password):
                     try:
@@ -427,9 +441,91 @@ class LoggedInState(peer.State):
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
+    @defer.inlineCallbacks
     def msg_QUIT(self, message):
-        channels = message.params
-        # TODO: quit means: give up membership (priv channels)
+        channel = message.params[0]
+
+        try:
+            mode = yield self.db.get_channel_mode(channel)
+
+            if mode:
+                if mode == 'priv':
+                    is_member = yield self.db.is_member(self.nick, channel)
+                    if is_member:
+                        self.db.delete_members(channel, [self.nick])
+                        if self.connected:
+                            self.endpoint.user_quit(channel, self.nick)
+                            # TODO: broadcast!
+                    else:
+                        self.endpoint.no_member(self.nick, channel)
+            else:
+                if self.connected:
+                    self.endpoint.no_channel(channel)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_ADD(self, message):
+        channel, *nicks = message.params
+
+        try:
+            mode = yield self.db.get_channel_mode(channel)
+            if mode == 'priv':
+                creator = yield self.db.get_channel_creator(channel)
+                if creator == self.nick:
+                    valid_nicks = yield self.db.users_registered(nicks)
+                    if valid_nicks:
+                        yield self.db.add_members(channel, valid_nicks)
+                        if self.connected:
+                            self.endpoint.added(channel, valid_nicks)
+                            # TODO: broadcast!
+                    if self.connected:
+                        for nick in set(nicks) - set(valid_nicks):
+                            self.endpoint.no_user(nick)
+                else:
+                    self.endpoint.no_perms('ADD', 'You are not creator of this channel.')
+            elif mode == 'pub':
+                self.endpoint.bad_operation('add members to a public channel')
+            else:
+                self.endpoint.no_channel(channel)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_KICK(self, message):
+        channel, *nicks = message.params
+
+        try:
+            mode = yield self.db.get_channel_mode(channel)
+
+            if mode == 'priv':
+                creator = yield self.db.get_channel_creator(channel)
+
+                if creator == self.nick:
+                    valid_nicks = yield self.db.users_registered(nicks)
+                    if valid_nicks:
+
+                        yield self.db.delete_members(channel, valid_nicks)
+                        if self.connected:
+                            self.endpoint.kicked(channel, valid_nicks)
+                            # TODO: broadcast!
+
+                    if self.connected:
+                        for nick in set(nicks) - set(valid_nicks):
+                            self.endpoint.no_user(nick)
+                else:
+                    self.endpoint.no_perms('KICK', 'You are not creator of this channel.')
+            elif mode == 'pub':
+                self.endpoint.bad_operation('kick members from a public channel')
+            else:
+                self.endpoint.no_channel(channel)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    def msg_INVITE(self, message):
+        pass
+
+    def brd_NOTIFY(self, message):
         pass
 
 
@@ -466,6 +562,9 @@ class ConversationState(peer.State):
 
         self.endpoint.user_left(self.channel, self.nick)
         self.manager.state_logged_in(self.nick, starting=False)
+
+    def brd_KICKED(self, message):
+        pass
 
     def brd_MSG(self, message):
         author = message.prefix

@@ -50,9 +50,8 @@ class ServerEndpoint(comm.Endpoint):
     def leave(self, channel):
         self.send(f'LEAVE {channel}')
 
-    def quit(self, channels):
-        channel_list = ' '.join(channels)
-        self.send(f'QUIT {channel_list}')
+    def quit(self, channel):
+        self.send(f'QUIT {channel}')
 
     def add(self, channel, nicks):
         nick_list = ' '.join(nicks)
@@ -366,7 +365,62 @@ class LoggedInState(State):
         self.manager.state_conversation(channel)
 
     def cmd_QUIT(self, cmd):
-        pass
+        try:
+            channel = cmd.params[0]
+            self.endpoint.quit(channel)
+        except IndexError:
+            self.iface.send('Pass channel name.', color='RED')
+
+    def msg_OK_QUIT(self, message):
+        channel, _ = message.params
+        self.iface.send(f'You quit {channel} channel.', color='YELLOW')
+
+    def msg_ERR_NOT_MEMBER(self, message):
+        _, channel = message.params
+        self.iface.send(f"You're not a member of {channel} channel!", color='RED')
+
+    def cmd_ADD(self, cmd):
+        try:
+            channel, *nicks = cmd.params
+            if nicks:
+                self.endpoint.add(channel, nicks)
+            else:
+                raise ValueError
+        except ValueError:
+            self.iface.send(f'Pass channel name and nicks to add!', color='RED')
+
+    def msg_OK_ADDED(self, message):
+        channel, *nicks = message.params
+        nicks = ', '.join(nicks)
+        self.iface.send(f'Users: {nicks} added to channel: {channel}', color='YELLOW')
+
+    def msg_ERR_NOUSER(self, message):
+        user = message.params[0]
+        self.iface.send(f'User {user} is not registered!', color='RED')
+
+    def cmd_KICK(self, cmd):
+        try:
+            channel, *nicks = cmd.params
+            if nicks:
+                self.endpoint.kick(channel, nicks)
+            else:
+                raise ValueError
+        except ValueError:
+            self.iface.send(f'Pass channel name and nicks to kick!', color='RED')
+
+    def msg_OK_KICKED(self, message):
+        channel, *nicks = message.params
+        nicks = ', '.join(nicks)
+        self.iface.send(f'Users: {nicks} kicked from channel: {channel}', color='YELLOW')
+
+    def msg_ERR_BAD_OP(self, message):
+        operation = message.params[0]
+        self.iface.send(f"It's not possible to {operation}!", color='RED')
+
+    def msg_NOTIFY(self, message):
+        reason, notification = message.params
+        self.iface.send(f'Notified! Reason: {reason}', color='GREEN')
+        self.iface.send(f'Notification: {notification}', color='GREEN')
 
 
 class ConversationState(State):

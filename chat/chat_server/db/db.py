@@ -103,12 +103,27 @@ class DBService(service.Service):
 
     @log_operation
     @defer.inlineCallbacks
+    def add_members(self, channel_name, nicks):
+        member_tuples = [(nick, channel_name) for nick in nicks]
+        yield self._dbpool.runInteraction(self._add_members, member_tuples)
+
+    @staticmethod
+    def _delete_members(transaction, member_tuples):
+        transaction.executemany(query.delete_member, member_tuples)
+
+    @log_operation
+    @defer.inlineCallbacks
+    def delete_members(self, channel_name, nicks):
+        member_tuples = [(nick, channel_name) for nick in nicks]
+        yield self._dbpool.runInteraction(self._delete_members, member_tuples)
+
+    @log_operation
+    @defer.inlineCallbacks
     def add_channel(self, channel_name, creator, public=True, nicks=None):
         yield self._dbpool.runOperation(query.insert_channel, (channel_name, creator, int(public)))
 
         if nicks and not public:
-            member_tuples = [(nick, channel_name) for nick in nicks]
-            yield self._dbpool.runInteraction(self._add_members, member_tuples)
+            self.add_members(channel_name, nicks)
 
     @log_operation
     def delete_channel(self, channel_name):
@@ -118,7 +133,6 @@ class DBService(service.Service):
     @defer.inlineCallbacks
     def get_channel_creator(self, channel_name):
         creator = yield self._dbpool.runQuery(query.select_creator, (channel_name,))
-
         if creator:
             return creator[0][0]
         else:
@@ -151,4 +165,3 @@ class DBService(service.Service):
     def get_priv_channels(self, nick):
         channels = yield self._dbpool.runQuery(query.select_priv_channels, (nick,))
         return [c[0] for c in channels]
-

@@ -83,3 +83,6 @@ delete_user = ('DELETE FROM user '
 
 delete_channel = ('DELETE FROM channel '
                   'WHERE name = ?')
+
+delete_member = ('DELETE FROM is_member '
+                 'WHERE user = ? AND channel = ?')

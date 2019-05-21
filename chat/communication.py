@@ -48,6 +48,9 @@ class Message:
         'LIST': 0,
         'NAMES': 0,
         'HELP': 0,
+
+        'QUIT': 1,
+
     }
 
     def __init__(self, string=None, prefix=None, command=None, params=None):
