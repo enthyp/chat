@@ -53,7 +53,8 @@ class Message:
 
     }
 
-    def __init__(self, string=None, prefix=None, command=None, params=None):
+    def __init__(self, string=None, prefix='', command='', params=None):
+        params = [] if not params else params
         if string:
             prefix, command, params = self._parse_message(string)
 

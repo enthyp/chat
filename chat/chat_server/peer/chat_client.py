@@ -387,6 +387,7 @@ class LoggedInState(peer.State):
                     content = util.mark('Channel deleted.', 'RED')
                     msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                     self.dispatcher.publish(channel_name, self.manager, msg)
+
                     msg = comm.Message(command='OK_DELETED', params=[channel_name])
                     self.dispatcher.publish(channel_name, self.manager, msg, to='clients')
 
@@ -455,7 +456,13 @@ class LoggedInState(peer.State):
                         self.db.delete_members(channel, [self.nick])
                         if self.connected:
                             self.endpoint.user_quit(channel, self.nick)
-                            # TODO: broadcast!
+
+                            msg = comm.Message(command='USR_QUIT', params=[channel, self.nick])
+                            self.dispatcher.publish('servers', self.manager, msg)
+
+                            content = util.mark(f'Member quit: {self.nick}', 'GREEN')
+                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                            self.dispatcher.publish(channel, self.manager, msg)
                     else:
                         self.endpoint.no_member(self.nick, channel)
             else:
@@ -478,7 +485,15 @@ class LoggedInState(peer.State):
                         yield self.db.add_members(channel, valid_nicks)
                         if self.connected:
                             self.endpoint.added(channel, valid_nicks)
-                            # TODO: broadcast!
+
+                            msg = comm.Message(command='ADDED', params=[channel, *valid_nicks])
+                            self.dispatcher.publish('servers', self.manager, msg)
+
+                            content = util.mark(f'Members added: {valid_nicks}', 'GREEN')
+                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                            self.dispatcher.publish(channel, self.manager, msg)
+
+                            # TODO: notify (implement in Dispatcher)!
                     if self.connected:
                         for nick in set(nicks) - set(valid_nicks):
                             self.endpoint.no_user(nick)
@@ -504,12 +519,26 @@ class LoggedInState(peer.State):
                 if creator == self.nick:
                     valid_nicks = yield self.db.users_registered(nicks)
                     if valid_nicks:
+                        try:
+                            valid_nicks.remove(self.nick)
+                        except ValueError:
+                            pass
 
                         yield self.db.delete_members(channel, valid_nicks)
                         if self.connected:
                             self.endpoint.kicked(channel, valid_nicks)
-                            # TODO: broadcast!
 
+                            msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
+                            self.dispatcher.publish('servers', self.manager, msg)
+
+                            msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
+                            self.dispatcher.publish(channel, self.manager, msg, to='clients')
+
+                            content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
+                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                            self.dispatcher.publish(channel, self.manager, msg)
+
+                            # TODO: notify (implement in Dispatcher)!
                     if self.connected:
                         for nick in set(nicks) - set(valid_nicks):
                             self.endpoint.no_user(nick)
@@ -552,6 +581,7 @@ class ConversationState(peer.State):
 
     def msg_MSG(self, message):
         message.prefix = self.nick
+        _, _ = message.params
         self.dispatcher.publish(self.channel, self.manager, message)
 
     def msg_LEAVE(self, _):
@@ -564,7 +594,11 @@ class ConversationState(peer.State):
         self.manager.state_logged_in(self.nick, starting=False)
 
     def brd_KICKED(self, message):
-        pass
+        _, *nicks = message.params
+
+        if self.nick in nicks:
+            self.endpoint.user_kicked(self.channel, self.nick)
+            self.manager.state_logged_in(self.nick, starting=False)
 
     def brd_MSG(self, message):
         author = message.prefix

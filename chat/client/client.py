@@ -451,7 +451,7 @@ class ConversationState(State):
         line = line.strip()
         cmd = ''
 
-        if line[0] == '/':
+        if line and line[0] == '/':
             try:
                 cmd, line = line.split(maxsplit=1)
             except ValueError:
@@ -472,7 +472,8 @@ class ConversationState(State):
         self.manager.state_logged_in(starting=False)
 
     def cmd_MSG(self, cmd):
-        self.endpoint.msg(self.channel, cmd.content)
+        if cmd.content:
+            self.endpoint.msg(self.channel, cmd.content)
 
     def msg_MSG(self, message):
         author = message.prefix
@@ -489,6 +490,10 @@ class ConversationState(State):
         channel, *nicks = message.params
         nicks = ', '.join(nicks)
         self.iface.send(f'Users on {channel} channel: {nicks}', color='YELLOW')
+
+    def msg_KICKED(self, _):
+        self.iface.send('You got kicked from the channel!', color='RED')
+        self.manager.state_logged_in(starting=False)
 
 
 class ConnectionFactory(ClientFactory):
