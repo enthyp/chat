@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Toxicity Monitor</title>
+    <style>
+      body
+      {
+        background-color: #2b2929;
+      }
+
+      #mainHeader
+      {
+        position: absolute;
+          float: left;
+          left: 50%;
+          transform: translate(-50%, 0);
+          font-size: 2vw;
+          font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+          color: white;
+      }
+
+      #returnHeader
+      {
+          position: absolute;
+          float: left;
+          
+          left: 50%;
+          transform: translate(-145%, 440%);
+          font-size: 1vw; 
+          color: white
+      }
+
+      #scrollBox
+      {
+          position: absolute;
+          float: left;
+          top: 15%;
+          left: 50%;
+          transform: translate(-50%, 0);
+          border: none;
+          font-size: 1vw; 
+          font-family: sans-serif;
+          color: white;
+          width: 29vw;
+          height: 42vw;
+          overflow-y: scroll;
+          background-color: #595959 ;
+      }
+
+      #textBox
+      {
+          margin-left: 3%;
+      }
+
+      ::-webkit-scrollbar-track 
+      {
+          background: #f1f1f1; 
+      }
+
+      ::-webkit-scrollbar 
+      {
+          width: 12px;
+          height: 12px;
+      }
+
+      ::-webkit-scrollbar-thumb 
+      {
+          background: rgb(48, 48, 48);  
+          border-radius: 10px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover 
+      {
+          background: rgb(107, 107, 107);  
+      }
+      
+      .clean
+      {
+        color: white;
+   
+      }
+
+      .toxic1
+      {
+        color:rgb(153, 255, 0);
+  
+      }
+
+      .toxic2
+      {
+        color: rgb(87, 145, 0);
+    
+      }
+
+      .toxic3
+      {
+        color: rgb(60, 100, 0);
+    
+      }
+
+      .severeToxic1
+      {
+        color: rgb(210, 233, 0);
+ 
+      }
+
+      .severeToxic2
+      {
+        color: rgb(144, 160, 0);
+ 
+      }
+
+      .severeToxic3
+      {
+        color: rgb(86, 95, 0);
+ 
+      }
+
+      .obscene1
+      {
+        color: rgb(0, 255, 234);
+ 
+      }
+
+      .obscene2
+      {
+        color: rgb(0, 161, 148);
+ 
+      }
+
+      .obscene3
+      {
+        color: rgb(0, 92, 84);
+ 
+      }
+
+      .threat1
+      {
+        color: rgb(255, 0, 0);
+ 
+      }
+
+      .threat2
+      {
+        color: rgb(134, 0, 0);
+ 
+      }
+
+      .threat3
+      {
+        color: rgb(77, 0, 0);
+     
+      }
+
+      .insult1
+      {
+        color: rgb(255, 123, 0);
+ 
+      }
+
+      .insult2
+      {
+        color: rgb(165, 80, 0);
+ 
+      }
+
+      .insult3
+      {
+        color: rgb(99, 48, 0);
+ 
+      }
+
+      .identityHate1
+      {
+        color: rgb(146, 0, 214);
+ 
+      }
+
+      .identityHate2
+      {
+        color: rgb(105, 0, 153);
+ 
+      }
+
+      .identityHate3
+      {
+        color: rgb(63, 0, 92);
+        
+      }
+
+      #legend
+      {
+          position: absolute;
+          float: left;
+          top: 15%;
+          margin-left: 3vw;
+
+          transform: translate(0, 0);
+          border: none;
+          font-size: 2vw; 
+          font-family: sans-serif;
+          color: white;
+          width: 28vw;
+          height: 15vw;
+          
+      }
+
+      .legendBlock
+      {
+        display:inline; 
+        padding-left: 1.5vw;
+        padding-right: 1.5vw;
+        padding-top: 1.5vw;
+        padding-bottom: 1.5vw;
+        
+      }
+
+    </style>
+  </head>
+  <body>
+    <div id="mainHeader"><p>Full History</p></div>
+
+    <div>
+        <a href="/"  id=returnHeader>Return to Live Monitor</a>
+        <div id="scrollBox">
+            <div id="textBox">
+                    {% for msg in messages %}
+                      {% set outer_loop = loop %}
+                      {% for i in range(0,6) %}
+                      <p {% if i == 0 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="toxic1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="toxic2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="toxic3"
+                            {% endif %}
+                         {% elif i==1 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="severeToxic1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="severeToxic2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="severeToxic3"
+                         {% endif %}
+                         {% elif i==2 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="obscene1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="obscene2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="obscene3"
+                         {% endif %}
+                         {% elif i==3 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="threat1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="threat2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="threat3"
+                         {% endif %}
+                         {% elif i==4 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="insult1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="insult2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="insult3"
+                         {% endif %}
+                         {% elif i==5 %} 
+                            {% if stats[outer_loop.index-1][i] == 1 %} class="identityHate1" 
+                            {% elif stats[outer_loop.index-1][i] == 2 %} class="identityHate2"
+                            {% elif stats[outer_loop.index-1][i] == 3 %} class="identityHate3"
+                         {% endif %}
+                         {% endif %}
+
+                         style="display:inline">■ </p>
+                      {% endfor %}
+                    <p style="display: inline">{{ msg }}</p>
+                    <p></p>
+                    {% endfor %}
+            </div>
+            
+        </div>
+    </div>
+
+    <div id="legend">
+        <p style=" margin-bottom: 1vw; padding-left: 13.5vw">Intensity -></p> 
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline; margin-right: 6.9vw">Toxic:</p>     
+                  <div class="toxic1 legendBlock">■</div>
+                  <div class="toxic2 legendBlock">■</div>
+                  <div class="toxic3 legendBlock">■</div>
+          </div>
+          
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline">Severe Toxic: </p>
+              <div class="severeToxic1 legendBlock">■</div>
+              <div class="severeToxic2 legendBlock">■</div>
+              <div class="severeToxic3 legendBlock">■</div>
+          </div>
+
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline; margin-right: 3.4vw">Obscene: </p>
+              <div class="obscene1 legendBlock">■</div>
+              <div class="obscene2 legendBlock">■</div>
+              <div class="obscene3 legendBlock">■</div>
+          </div>
+
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline ; margin-right: 6.6vw">Insult: </p>
+              <div class="insult1 legendBlock">■</div>
+              <div class="insult2 legendBlock">■</div>
+              <div class="insult3 legendBlock">■</div>
+          </div>
+
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline; margin-right: 5.6vw">Threat: </p>
+              <div class="threat1 legendBlock">■</div>
+              <div class="threat2 legendBlock">■</div>
+              <div class="threat3 legendBlock">■</div>
+          </div>
+          
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline; margin-right:0.2vw">Identity Hate: </p>
+              <div class="identityHate1 legendBlock">■</div>
+              <div class="identityHate2 legendBlock">■</div>
+              <div class="identityHate3 legendBlock">■</div>
+          </div>
+          <div style="margin-bottom: 1vw">
+              <p style="display:inline; margin-right: 6.6vw">Clear: </p>
+              <div class="legendBlock">■</div>
+          </div>
+    </div>
+    
+</html>
