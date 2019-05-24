@@ -2,3 +2,6 @@ python>=3.6.6
 twisted>=18.9.0
 keras>=2.2.4
 -e .
+flask>=1.0.2
+tkinter>=8.6
+jinja2>=2.10.1
