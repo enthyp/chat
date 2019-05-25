@@ -66,12 +66,6 @@ class Message:
         self.command = command
         self.params = params
 
-    def __str__(self):
-        string = ' '.join([self.command] + self.params)
-        if self.prefix:
-            string = f':{self.prefix} {string}'
-
-        return string
 
     @staticmethod
     def _parse_message(string):

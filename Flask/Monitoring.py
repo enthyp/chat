@@ -1,6 +1,7 @@
 import sqlite3
 from sqlite3 import Error
 from flask import *
+import json
 
 
 DATABASE = '/home/brtqkr/PycharmProjects/Flask/database'
@@ -48,11 +49,15 @@ def extract_ratings(conn):
 app = Flask(__name__)
 
 
-# messages: regular Array of messages received from server
 @app.route('/', endpoint='load_live', methods=['POST'])
 def main_page():
-    # nie wiem w jakiej formie będzie przesyłane; data roboczo potem można json czy coś
-    messages=request.data
+    data = json.loads(request.data)
+    author = data['author']
+    channel_name = data['channel']
+    message = data['content']
+    scores = data['scores']
+    print(author, channel_name, message, scores)
+
     return render_template("main_page.html",
                            messages=["abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl",
                                      "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl",
