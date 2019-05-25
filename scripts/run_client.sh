@@ -1,1 +1,1 @@
-python chat/client/client.py 8080
+python chat/client/client.py --gui 8080
