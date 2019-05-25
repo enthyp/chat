@@ -1,9 +1,9 @@
 import time
 import random
-from .model import Model
+from ai.model import Model
 
 
-class Checker(Model):
+class MockChecker(Model):
     def __init__(self):
         self.keywords = ['foo', 'bar']
 

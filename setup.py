@@ -4,4 +4,5 @@ setup(
     name='toxin',
     version='0.0.1.3',
     packages=find_packages(),
+    package_data={'ai': ['models/*']},
 )
