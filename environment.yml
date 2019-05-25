@@ -4,5 +4,5 @@ dependencies:
   - twisted>=18.9.0
   - keras>=2.2.4
   - flask>=1.0.2
-  - tkinter>=8.6
+  - tk>=8.6
   - jinja2>=2.10.1
