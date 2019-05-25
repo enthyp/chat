@@ -4,7 +4,7 @@ from twisted.python import log, failure
 from twisted.internet import defer
 from twisted.application import service
 from twisted.enterprise import adbapi
-from chat.chat_server import config
+from chat import config
 from chat.chat_server.db import query
 
 

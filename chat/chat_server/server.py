@@ -1,8 +1,9 @@
 from twisted.python import log
 from twisted.internet import protocol
 from twisted.application import service
+from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 
-from chat.chat_server import config
+from chat import config
 from chat.chat_server import peer
 from chat.chat_server import dispatch
 from chat import communication as comm
@@ -28,9 +29,10 @@ class PeerFactory(protocol.Factory):
         def on_connection_closed(self):
             log.msg('Connection lost before server/client differentiation.')
 
-    def __init__(self, db, dispatcher):
+    def __init__(self, db, dispatcher, ai_conn):
         self.db = db
         self.dispatcher = dispatcher
+        self.ai_conn = ai_conn
 
     def buildProtocol(self, addr):
         protocol = self.protocol()
@@ -41,7 +43,7 @@ class PeerFactory(protocol.Factory):
 
     def chat_client_connected(self, protocol, message):
         endpoint = peer.ChatClientEndpoint(protocol)
-        client_peer = peer.ChatClient(self.db, self.dispatcher, protocol, endpoint)
+        client_peer = peer.ChatClient(self.db, self.dispatcher, self.ai_conn, protocol, endpoint)
         client_peer.state_init(message)
 
     def chat_server_connected(self, protocol, message):
@@ -57,17 +59,33 @@ class PeerFactory(protocol.Factory):
         log.err(f'Received {cmd} with params: {params}')
 
 
+class AIConnector:
+    def __init__(self):
+        from twisted.internet import reactor
+        self.ai_endpoint = TCP4ClientEndpoint(reactor, config.ai_server_host,
+                                              config.ai_server_port)
+
+    def send_msg(self, msg):
+        def gotProtocol(p):
+            p.sendLine(msg)
+            p.loseConnection()
+
+        d = connectProtocol(self.ai_endpoint, comm.BaseProtocol())
+        d.addCallback(gotProtocol)
+
+
 class ChatServer(service.Service):
     def __init__(self, db):
         self.db = db
         self.dispatcher = dispatch.Dispatcher()
-        self.peer_factory = PeerFactory(self.db, self.dispatcher)
+        self.ai_conn = AIConnector()
+        self.peer_factory = PeerFactory(self.db, self.dispatcher, self.ai_conn)
 
     def startService(self):
         from twisted.internet import reactor
-        reactor.listenTCP(config.server_port,
+        reactor.listenTCP(config.chat_server_port,
                           self.peer_factory,
-                          interface=config.server_host)
+                          interface=config.chat_server_host)
 
     def stopService(self):
         pass

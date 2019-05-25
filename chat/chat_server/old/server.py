@@ -6,7 +6,7 @@ from twisted.protocols.policies import TimeoutMixin
 from twisted.python import log
 
 import chat.util as util
-from chat.ai_server.ai_service import AIResponse
+from chat.ai_server.service import AIResponse
 
 
 class ChatProtocol(LineReceiver):

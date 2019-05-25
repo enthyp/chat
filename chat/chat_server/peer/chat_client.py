@@ -560,13 +560,14 @@ class LoggedInState(peer.State):
 
 class ConversationState(peer.State):
 
-    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick, channel_name):
+    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick, channel_name, ai_conn):
         super().__init__(protocol, endpoint, manager)
 
         self.db = db
         self.dispatcher = dispatcher
         self.nick = nick
         self.channel = channel_name
+        self.ai_conn = ai_conn
 
         self.endpoint.user_joined(channel_name, nick)
         self.dispatcher.subscribe(channel_name, self.manager, self.nick)
@@ -583,6 +584,7 @@ class ConversationState(peer.State):
         message.prefix = self.nick
         _, _ = message.params
         self.dispatcher.publish(self.channel, self.manager, message)
+        self.ai_conn.send_msg(message)
 
     def msg_LEAVE(self, _):
         content = util.mark(f'{self.nick} left the channel.', 'GREEN')
@@ -611,6 +613,10 @@ class ConversationState(peer.State):
 
 
 class ChatClient(peer.Peer):
+    def __init__(self, db, dispatcher, ai_conn, protocol, endpoint):
+        super().__init__(db, dispatcher, protocol, endpoint)
+        self.ai_conn = ai_conn
+
     def state_init(self, message=None):
         self.state = InitialState(self.protocol, self.endpoint, self)
         if message:
@@ -633,5 +639,5 @@ class ChatClient(peer.Peer):
 
     def state_conversation(self, nick, channel):
         self.state = ConversationState(self.protocol, self.endpoint,
-                                       self.db, self.dispatcher, self,
+                                       self.db, self.dispatcher, self, self.ai_conn,
                                        nick, channel)
