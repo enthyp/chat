@@ -67,7 +67,6 @@ class AIConnector:
 
     def send_msg(self, msg):
         def gotProtocol(p):
-            print("BOB: ", msg)
             p.sendLine(msg)
             p.loseConnection()
 

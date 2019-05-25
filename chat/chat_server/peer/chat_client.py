@@ -584,7 +584,9 @@ class ConversationState(peer.State):
         message.prefix = self.nick
         _, _ = message.params
         self.dispatcher.publish(self.channel, self.manager, message)
-        self.ai_conn.send_msg(str(message))
+
+        string = f':{message.prefix} MSG {message.params[0]} :{message.params[1]}'
+        self.ai_conn.send_msg(string)
 
     def msg_LEAVE(self, _):
         content = util.mark(f'{self.nick} left the channel.', 'GREEN')

@@ -5,7 +5,9 @@ import ai
 
 
 def get_model_dummy(_):
-    return ai.Checker()
+    checker = ai.Checker()
+    checker.load_from_package(100)
+    return checker
 
 toxic_service = ToxicService('', get_model_dummy)
 application = service.Application('toxic_service')
