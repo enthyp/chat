@@ -4,7 +4,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from chat import communication as comm
-from chat.client import cmdline
+from chat.client import cmdline, gui
 
 
 class Command:
@@ -571,13 +571,18 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Basic chat client in Twisted.')
     parser.add_argument('port', type=int, help='Port to connect to.')
     parser.add_argument('host', nargs='?', default='localhost', help='Host to connect to.')
-
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--cmd', action='store_true')
+    group.add_argument('--gui', action='store_false')
     return parser.parse_args()
 
 
 def client_main():
     args = parse_args()
-    iface = cmdline.CMDLine()   # will depend on args
+    if args.cmd:
+        iface = cmdline.CMDLine()   # will depend on args
+    else:
+        iface = gui.GUI()
     client = Client(args.host, args.port, iface=iface)
     iface.register_client(client)
 
