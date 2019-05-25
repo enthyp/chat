@@ -1,11 +1,13 @@
 import typing
-from io import StringIO
 import json
 from twisted.application import service
 from twisted.internet.protocol import ServerFactory
 from twisted.protocols.basic import LineReceiver
 from twisted.python import log
-from twisted.web.client import Agent, FileBodyProducer
+from twisted.web.client import Agent
+from twisted.internet.defer import succeed
+from twisted.web.iweb import IBodyProducer
+from zope.interface import implementer
 
 from chat import communication as comm
 from chat import config
@@ -26,6 +28,24 @@ class ToxicServiceProtocol(LineReceiver):
             log.err(f'ERR: {str(e)}')
 
 
+@implementer(IBodyProducer)
+class StringProducer(object):
+
+    def __init__(self, body):
+        self.body = body
+        self.length = len(body)
+
+    def startProducing(self, consumer):
+        consumer.write(self.body)
+        return succeed(None)
+
+    def pauseProducing(self):
+        pass
+
+    def stopProducing(self):
+        pass
+
+
 class ToxicFactory(ServerFactory):
     protocol = ToxicServiceProtocol
 
@@ -44,19 +64,19 @@ class ToxicFactory(ServerFactory):
                      'channel': msg.params[0],
                      'content': content,
                      'scores': scores}
-        body_json = json.dumps(body_dict)
+        body_json = json.dumps(body_dict, ensure_ascii=False).encode(errors='ignore')
 
-        body = FileBodyProducer(StringIO(body_json))
-        d = self.agent.request('POST',
+        body = StringProducer(body_json)
+        d = self.agent.request('POST'.encode(),
                                config.flask_host.encode(errors='ignore'),
-                               config.flask_port,
-                               body)
+                               bodyProducer=body)
 
         def on_response(_):
             log.msg('Sent to Flask!')
 
         def on_failure(reason):
-            log.err('Failed to send to Flask: ', reason)
+            print(reason)
+            log.err('Failed to send to Flask: ' + reason.getErrorMessage())
 
         d.addCallbacks(on_response, on_failure)
 

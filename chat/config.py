@@ -8,5 +8,4 @@ server_password = 'VERY_SECRET_PASSWORD'
 ai_server_host = 'localhost'
 ai_server_port = 8081
 
-flask_host = 'localhost'
-flask_port = 5000
+flask_host = 'http://127.0.0.1:5000/'
