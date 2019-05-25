@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Toxicity Monitor</title>
+    <style>
+      body
+      {
+        background-color: #2b2929;
+      }
+
+      #mainHeader
+      {
+        position: absolute;
+          float: left;
+          left: 50%;
+          transform: translate(-50%, 0);
+          font-size: 2vw;
+          font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+          color: white;
+      }
+
+      #historyHeader
+      {
+          position: absolute;
+          float: left;
+          
+          left: 50%;
+          transform: translate(-165%, 440%);
+          font-size: 1vw; 
+          color: white
+      }
+
+      #scrollBox
+      {
+          position: absolute;
+          float: left;
+          top: 15%;
+          left: 50%;
+          transform: translate(-50%, 0);
+          border: none;
+          font-size: 1vw; 
+          font-family: sans-serif;
+          color: white;
+          width: 29vw;
+          height: 42vw;
+          overflow-y: scroll;
+          background-color: #595959 ;
+      }
+
+      #textBox
+      {
+          margin-left: 3%;
+      }
+
+      ::-webkit-scrollbar-track 
+      {
+          background: #f1f1f1; 
+      }
+
+      ::-webkit-scrollbar 
+      {
+          width: 12px;
+          height: 12px;
+      }
+
+      ::-webkit-scrollbar-thumb 
+      {
+          background: rgb(48, 48, 48);  
+          border-radius: 10px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover 
+      {
+          background: rgb(107, 107, 107);  
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mainHeader"><p>Toxicity Monitor Live</p></div>
+
+    <div>
+        <a href="/history"  id=historyHeader>Full message history</a>
+      <div id="scrollBox">
+            <div id="textBox">
+                {% for msg in messages %}
+                <p>{{ msg }}</p>
+                {% endfor %}
+            </div>
+            
+        </div>
+    </div>
+        
+        
+  </body>
+</html>
