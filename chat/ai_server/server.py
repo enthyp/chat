@@ -36,23 +36,27 @@ class ToxicFactory(ServerFactory):
         self.agent = Agent(reactor)
 
     def on_msg(self, msg):
-        scores = self.service.process(msg)
+        content = msg.params[1]
+        scores = self.service.process(content)
         log.msg(f'Got scores: {scores}')
 
         body_dict = {'author': msg.prefix,
                      'channel': msg.params[0],
-                     'content': msg.params[1],
+                     'content': content,
                      'scores': scores}
         body_json = json.dumps(body_dict)
 
         body = FileBodyProducer(StringIO(body_json))
-        d = self.agent.request('POST', config.flask_host, config.flask_port, body)
+        d = self.agent.request('POST',
+                               config.flask_host.encode(errors='ignore'),
+                               config.flask_port,
+                               body)
 
         def on_response(_):
             log.msg('Sent to Flask!')
 
         def on_failure(reason):
-            log.err('Failure on sending to Flask: ', str(reason))
+            log.err('Failed to send to Flask: ', reason)
 
         d.addCallbacks(on_response, on_failure)
 

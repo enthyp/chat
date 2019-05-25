@@ -560,7 +560,7 @@ class LoggedInState(peer.State):
 
 class ConversationState(peer.State):
 
-    def __init__(self, protocol, endpoint, db, dispatcher, manager, nick, channel_name, ai_conn):
+    def __init__(self, protocol, endpoint, db, dispatcher, manager, ai_conn, nick, channel_name):
         super().__init__(protocol, endpoint, manager)
 
         self.db = db
@@ -584,7 +584,7 @@ class ConversationState(peer.State):
         message.prefix = self.nick
         _, _ = message.params
         self.dispatcher.publish(self.channel, self.manager, message)
-        self.ai_conn.send_msg(message)
+        self.ai_conn.send_msg(str(message))
 
     def msg_LEAVE(self, _):
         content = util.mark(f'{self.nick} left the channel.', 'GREEN')
