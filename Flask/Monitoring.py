@@ -25,7 +25,11 @@ def extract_messages(conn):
 
     messages = list()
     for row in rows:
+<<<<<<< HEAD
         messages.append(row[0] + "> " + row[2])
+=======
+        messages.append(row[0] + ">" + row[1])
+>>>>>>> d6a0124e4db3fd97e7464548454d64b3e19f0e05
 
     print(messages)
     return messages
@@ -40,7 +44,11 @@ def extract_ratings(conn):
     ratings = list()
     for i in range(0, len(rows)):
         stats = list()
+<<<<<<< HEAD
         for j in range(3, 9):
+=======
+        for j in range(2, 8):
+>>>>>>> d6a0124e4db3fd97e7464548454d64b3e19f0e05
             stats.append(rows[i][j])
         ratings.append(stats)
     return ratings
@@ -49,16 +57,22 @@ def extract_ratings(conn):
 app = Flask(__name__)
 
 
+<<<<<<< HEAD
 @app.route('/') # , endpoint='load_live', methods=['POST'])
 def main_page():
     live_list = list("")
     b = 0
 
+=======
+@app.route('/', endpoint='load_live', methods=['POST'])
+def main_page():
+>>>>>>> d6a0124e4db3fd97e7464548454d64b3e19f0e05
     data = json.loads(request.data)
     author = data['author']
     channel_name = data['channel']
     message = data['content']
     scores = data['scores']
+<<<<<<< HEAD
 
     # exemplary params to write into db
     # author = "User"
@@ -81,6 +95,14 @@ def main_page():
     conn.commit()
 
     return render_template("main_page.html", messages=live_list)
+=======
+    print(author, channel_name, message, scores)
+
+    return render_template("main_page.html",
+                           messages=["abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl",
+                                     "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl", "abc", "def", "ghi", "jkl",
+                                     "abc", "def", "ghi", "jkl"])
+>>>>>>> d6a0124e4db3fd97e7464548454d64b3e19f0e05
 
 
 # stats: 2D ARRAY [[toxic, severeToxic, ...], [toxic, severeToxic, ...]]
