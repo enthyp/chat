@@ -63,7 +63,7 @@ class Message:
                 raise BadMessage(f'{command}: bad number of parameters.')
 
         self.prefix = prefix
-        self.command = command
+        self.command = command.upper()
         self.params = params
 
 

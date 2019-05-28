@@ -115,11 +115,11 @@ class InitialState(State):
         self.iface.send(self.opening_line, color='BLUE')
 
     def handle_input(self, line):
-        if line == 'login':
+        if line.upper().strip() == 'LOGIN':
             self.manager.state_logging_in()
-        elif line == 'register':
+        elif line.upper().strip() == 'REGISTER':
             self.manager.state_registering()
-        elif line == 'quit':
+        elif line.upper().strip() == 'QUIT':
             self.manager.close_connection()
         else:
             self.iface.send(self.opening_line, color='BLUE')
@@ -264,7 +264,7 @@ class LoggedInState(State):
             method(cmd)
 
     def cmd_unknown(self, cmd):
-        self.iface.send(f'Unexpected command: {cmd}', color='RED')
+        self.iface.send(f'Unexpected command: {cmd.command}', color='RED')
 
     def cmd_HELP(self, _):
         self.endpoint.help()
