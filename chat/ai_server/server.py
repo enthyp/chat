@@ -72,11 +72,11 @@ class ToxicFactory(ServerFactory):
                                bodyProducer=body)
 
         def on_response(_):
-            log.msg('Sent to Flask!')
+            log.msg('Sent to monitor!')
 
         def on_failure(reason):
             print(reason)
-            log.err('Failed to send to Flask: ' + reason.getErrorMessage())
+            log.err('Failed to send to monitor: ' + reason.getErrorMessage())
 
         d.addCallbacks(on_response, on_failure)
 

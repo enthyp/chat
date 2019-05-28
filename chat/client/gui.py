@@ -5,20 +5,20 @@ from twisted.internet import tksupport
 class GUI:
     def __init__(self):
         window = tkinter.Tk()
-        window.geometry("400x650")
+        window.geometry("430x720")
         window.config(bg="#2b2929")
         tksupport.install(window)
         self.window = window
 
         message_box = tkinter.Text(window, height=32, state="disabled")
         message_box.pack(side=tkinter.TOP, padx=15, pady=5, fill=tkinter.Y)
-        message_box.config(bg="#595959")
+        message_box.config(bg="#595959", fg="#ffffff", font=("Impact", 12))
         self.message_box = message_box
 
         input_user = tkinter.StringVar()
         text_box = tkinter.Text(window, height=5)
-        text_box.pack(side=tkinter.BOTTOM, padx=15, pady=10)
-        text_box.config(bg="#595959")
+        text_box.pack(side=tkinter.BOTTOM, padx=15, pady=8)
+        text_box.config(bg="#595959", fg="#ffffff", font=("Impact", 12))
 
         def send_message(_):
             input_get = text_box.get('1.0', tkinter.END)
