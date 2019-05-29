@@ -52,7 +52,22 @@ def history():
 
     messages = extract_messages(rows)
     ratings = extract_ratings(rows)
-    return render_template("history.html", stats=ratings, messages=messages)
+
+    ratings_list=[list(row[3:]) for row in rows]
+
+    for i in range(0, len(ratings_list)):
+        for j in range(0, 6):
+
+            if ratings_list[i][j] < 0.5:
+                ratings_list[i][j] = 0
+            elif ratings_list[i][j] < 0.65:
+                ratings_list[i][j] = 1
+            elif ratings_list[i][j] < 0.80:
+                ratings_list[i][j] = 2
+            else:
+                ratings_list[i][j] = 3
+
+    return render_template("history.html", stats=ratings_list, messages=messages)
 
 
 @app.route('/stats')
