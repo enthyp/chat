@@ -133,7 +133,7 @@ class ChatClientEndpoint(comm.Endpoint):
     def connection_closed(self, message):
         self.send(f'CLOSED :{message}')
 
-    def help(self):
+    def help_logged_in(self):
         self.send('RPL_HELP :COMMANDS:')
         self.send('RPL_HELP : -> LIST - list all available channels')
         self.send('RPL_HELP : -> ISON [nick1 nick2...] - check if users are online')
@@ -143,9 +143,20 @@ class ChatClientEndpoint(comm.Endpoint):
         self.send('RPL_HELP : -> ADD #channel_name nick1 [nick2...] - add members to a private channel')
         self.send('RPL_HELP : -> KICK #channel_name nick1 [nick2...] - kick members from a private channel')
         self.send('RPL_HELP : -> QUIT #channel_name - cancel private channel membership')
-        self.send('RPL_HELP : -> INVITE #channel_name nick1 [nick2...] - send invitations to join public channel')
         self.send('RPL_HELP : -> LOGOUT - leave the chat')
         self.send('RPL_HELP : -> UNREGISTER - delete current account and leave the chat')
+
+    def help_conversation(self):
+        self.send('RPL_HELP :COMMANDS:')
+        self.send('RPL_HELP : -> /NAMES - list users present on the channel')
+        self.send('RPL_HELP : -> /LEAVE - stop listening to the channel')
+        self.send('RPL_HELP : -> /QUIT - cancel private channel membership')
+
+    def help_conversation_admin(self):
+        self.send('RPL_HELP :ADMIN COMMANDS:')
+        self.send('RPL_HELP : -> /ADD nick1 [nick2...] - add members to a private channel')
+        self.send('RPL_HELP : -> /KICK nick1 [nick2...] - kick members from a private channel')
+        self.send('RPL_HELP : -> /DELETE - delete the channel')
 
 
 class InitialState(peer.State):
@@ -335,7 +346,7 @@ class LoggedInState(peer.State):
         self.endpoint.is_on(users_on)
 
     def msg_HELP(self, _):
-        self.endpoint.help()
+        self.endpoint.help_logged_in()
 
     @defer.inlineCallbacks
     def msg_CREATE(self, message):
@@ -457,12 +468,12 @@ class LoggedInState(peer.State):
                         if self.connected:
                             self.endpoint.user_quit(channel, self.nick)
 
-                            msg = comm.Message(command='USR_QUIT', params=[channel, self.nick])
-                            self.dispatcher.publish('servers', self.manager, msg)
+                        msg = comm.Message(command='USR_QUIT', params=[channel, self.nick])
+                        self.dispatcher.publish('servers', self.manager, msg)
 
-                            content = util.mark(f'Member quit: {self.nick}', 'GREEN')
-                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-                            self.dispatcher.publish(channel, self.manager, msg)
+                        content = util.mark(f'Member quit: {self.nick}', 'GREEN')
+                        msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                        self.dispatcher.publish(channel, self.manager, msg)
                     else:
                         self.endpoint.no_member(self.nick, channel)
             else:
@@ -485,18 +496,17 @@ class LoggedInState(peer.State):
                         yield self.db.add_members(channel, valid_nicks)
                         if self.connected:
                             self.endpoint.added(channel, valid_nicks)
+                            for nick in set(nicks) - set(valid_nicks):
+                                self.endpoint.no_user(nick)
 
-                            msg = comm.Message(command='ADDED', params=[channel, *valid_nicks])
-                            self.dispatcher.publish('servers', self.manager, msg)
+                        msg = comm.Message(command='ADDED', params=[channel, *valid_nicks])
+                        self.dispatcher.publish('servers', self.manager, msg)
 
-                            content = util.mark(f'Members added: {valid_nicks}', 'GREEN')
-                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-                            self.dispatcher.publish(channel, self.manager, msg)
+                        content = util.mark(f'Members added: {valid_nicks}', 'GREEN')
+                        msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                        self.dispatcher.publish(channel, self.manager, msg)
 
-                            # TODO: notify (implement in Dispatcher)!
-                    if self.connected:
-                        for nick in set(nicks) - set(valid_nicks):
-                            self.endpoint.no_user(nick)
+                        # TODO: notify (implement in Dispatcher)!
                 else:
                     self.endpoint.no_perms('ADD', 'You are not creator of this channel.')
             elif mode == 'pub':
@@ -527,21 +537,20 @@ class LoggedInState(peer.State):
                         yield self.db.delete_members(channel, valid_nicks)
                         if self.connected:
                             self.endpoint.kicked(channel, valid_nicks)
+                            for nick in set(nicks) - set(valid_nicks):
+                                self.endpoint.no_user(nick)
 
-                            msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
-                            self.dispatcher.publish('servers', self.manager, msg)
+                        msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
+                        self.dispatcher.publish('servers', self.manager, msg)
 
-                            msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
-                            self.dispatcher.publish(channel, self.manager, msg, to='clients')
+                        msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
+                        self.dispatcher.publish(channel, self.manager, msg, to='clients')
 
-                            content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
-                            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-                            self.dispatcher.publish(channel, self.manager, msg)
+                        content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
+                        msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                        self.dispatcher.publish(channel, self.manager, msg)
 
-                            # TODO: notify (implement in Dispatcher)!
-                    if self.connected:
-                        for nick in set(nicks) - set(valid_nicks):
-                            self.endpoint.no_user(nick)
+                        # TODO: notify (implement in Dispatcher)!
                 else:
                     self.endpoint.no_perms('KICK', 'You are not creator of this channel.')
             elif mode == 'pub':
@@ -550,9 +559,6 @@ class LoggedInState(peer.State):
                 self.endpoint.no_channel(channel)
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
-
-    def msg_INVITE(self, message):
-        pass
 
     def brd_NOTIFY(self, message):
         pass
@@ -567,6 +573,8 @@ class ConversationState(peer.State):
         self.dispatcher = dispatcher
         self.nick = nick
         self.channel = channel_name
+        self.mode = None
+        self.admin = None
         self.ai_conn = ai_conn
 
         self.endpoint.user_joined(channel_name, nick)
@@ -575,6 +583,30 @@ class ConversationState(peer.State):
         content = util.mark(f'{self.nick} joins the channel.', 'GREEN')
         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
         self.dispatcher.publish(channel_name, self.manager, msg)
+
+    @defer.inlineCallbacks
+    def _get_admin(self):
+        if self.admin:
+            return self.admin
+        try:
+            creator = yield self.db.get_channel_creator(self.channel)
+            if creator:
+                self.admin = creator
+            return creator
+        except failure.Failure:
+            raise
+
+    @defer.inlineCallbacks
+    def _get_mode(self):
+        if self.mode:
+            return self.mode
+        try:
+            mode = yield self.db.get_channel_mode(self.channel)
+            if mode:
+                self.mode = mode
+            return mode
+        except failure.Failure:
+            raise
 
     def msg_NAMES(self, _):
         names = self.dispatcher.names(self.channel)
@@ -588,6 +620,17 @@ class ConversationState(peer.State):
         string = f':{message.prefix} MSG {message.params[0]} :{message.params[1]}'
         self.ai_conn.send_msg(string)
 
+    @defer.inlineCallbacks
+    def msg_HELP(self, _):
+        self.endpoint.help_conversation()
+
+        try:
+            admin = yield self._get_admin()
+            if admin == self.nick:
+                self.endpoint.help_conversation_admin()
+        except failure.Failure:
+            self.log_err(f'failed to get admin for {self.channel}')
+
     def msg_LEAVE(self, _):
         content = util.mark(f'{self.nick} left the channel.', 'GREEN')
         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
@@ -596,6 +639,137 @@ class ConversationState(peer.State):
 
         self.endpoint.user_left(self.channel, self.nick)
         self.manager.state_logged_in(self.nick, starting=False)
+
+    @defer.inlineCallbacks
+    def msg_QUIT(self, _):
+        try:
+            mode = yield self._get_mode()
+            if mode == 'pub' or not mode:
+                self.endpoint.bad_operation('quit from a public channel')
+                return
+
+            self.db.delete_members(self.channel, [self.nick])
+
+            msg = comm.Message(command='USR_QUIT', params=[self.channel, self.nick])
+            self.dispatcher.publish('servers', self.manager, msg)
+
+            content = util.mark(f'Member quit: {self.nick}', 'GREEN')
+            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+            self.dispatcher.publish(self.channel, self.manager, msg)
+            self.dispatcher.unsubscribe(self.channel, self.manager, self.nick)
+
+            self.endpoint.user_quit(self.channel, self.nick)
+            self.manager.state_logged_in(self.nick, starting=False)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    # TODO: this duplication (well, I guess not only it) shows that commands probably deserve
+    # their own classes with appropriate hooks and behavior implementations.
+    @defer.inlineCallbacks
+    def msg_ADD(self, message):
+        _, *nicks = message.params
+
+        try:
+            admin = yield self._get_admin()
+            if admin != self.nick:
+                self.endpoint.no_perms('ADD', 'You are not creator of this channel.')
+                return
+        except failure.Failure:
+            self.log_err(f'failed to get admin for {self.channel}')
+            return
+
+        try:
+            valid_nicks = yield self.db.users_registered(nicks)
+            if valid_nicks:
+                yield self.db.add_members(self.channel, valid_nicks)
+                if self.connected:
+                    self.endpoint.added(self.channel, valid_nicks)
+
+                msg = comm.Message(command='ADDED', params=[self.channel, *valid_nicks])
+                self.dispatcher.publish('servers', self.manager, msg)
+
+                content = util.mark(f'Members added: {valid_nicks}', 'GREEN')
+                msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                self.dispatcher.publish(self.channel, self.manager, msg)
+
+                # TODO: notify (implement in Dispatcher)!
+            if self.connected:
+                for nick in set(nicks) - set(valid_nicks):
+                    self.endpoint.no_user(nick)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_KICK(self, message):
+        _, *nicks = message.params
+
+        try:
+            admin = yield self._get_admin()
+            if admin != self.nick:
+                self.endpoint.no_perms('KICK', 'You are not creator of this channel.')
+                return
+        except failure.Failure:
+            self.log_err(f'failed to get admin for {self.channel}')
+            return
+
+        try:
+            valid_nicks = yield self.db.users_registered(nicks)
+            if valid_nicks:
+                try:
+                    valid_nicks.remove(self.nick)
+                except ValueError:
+                    pass
+
+                yield self.db.delete_members(self.channel, valid_nicks)
+                if self.connected:
+                    self.endpoint.kicked(self.channel, valid_nicks)
+
+                msg = comm.Message(command='KICKED', params=[self.channel, *valid_nicks])
+                self.dispatcher.publish('servers', self.manager, msg)
+
+                msg = comm.Message(command='KICKED', params=[self.channel, *valid_nicks])
+                self.dispatcher.publish(self.channel, self.manager, msg, to='clients')
+
+                content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
+                msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+                self.dispatcher.publish(self.channel, self.manager, msg)
+
+                # TODO: notify (implement in Dispatcher)!
+            if self.connected:
+                for nick in set(nicks) - set(valid_nicks):
+                    self.endpoint.no_user(nick)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
+
+    @defer.inlineCallbacks
+    def msg_DELETE(self, _):
+        try:
+            admin = yield self._get_admin()
+            if admin != self.nick:
+                self.endpoint.no_perms('DELETE', 'You are not creator of this channel.')
+                return
+        except failure.Failure:
+            self.log_err(f'failed to get admin for {self.channel}')
+            return
+
+        try:
+            yield self.db.delete_channel(self.channel)
+
+            content = util.mark('Channel deleted.', 'RED')
+            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
+            self.dispatcher.publish(self.channel, self.manager, msg)
+
+            msg = comm.Message(command='OK_DELETED', params=[self.channel])
+            self.dispatcher.publish(self.channel, self.manager, msg, to='clients')
+
+            self.dispatcher.remove_channel(self.channel)
+            self.dispatcher.publish('servers', self.manager, msg)
+
+            if self.connected:
+                self.endpoint.channel_deleted(self.channel)
+            self.manager.state_logged_in(self.nick, starting=False)
+        except failure.Failure:
+            self.endpoint.internal_error('DB error, please try again.')
 
     def brd_KICKED(self, message):
         _, *nicks = message.params

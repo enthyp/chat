@@ -57,10 +57,6 @@ class ServerEndpoint(comm.Endpoint):
         nick_list = ' '.join(nicks)
         self.send(f'ADD {channel} {nick_list}')
 
-    def invite(self, channel, nicks):
-        nick_list = ' '.join(nicks)
-        self.send(f'INVITE {channel} {nick_list}')
-
     def kick(self, channel, nicks):
         nick_list = ' '.join(nicks)
         self.send(f'KICK {channel} {nick_list}')
@@ -419,8 +415,7 @@ class LoggedInState(State):
 
     def msg_NOTIFY(self, message):
         reason, notification = message.params
-        self.iface.send(f'Notified! Reason: {reason}', color='GREEN')
-        self.iface.send(f'Notification: {notification}', color='GREEN')
+        self.iface.send(f'Notified! Reason: {reason}: {notification}', color='GREEN')
 
 
 class ConversationState(State):
@@ -454,6 +449,7 @@ class ConversationState(State):
         if line and line[0] == '/':
             try:
                 cmd, line = line.split(maxsplit=1)
+                cmd = cmd[1:]
             except ValueError:
                 cmd = line[1:]
                 line = ''
@@ -463,12 +459,27 @@ class ConversationState(State):
     def cmd_unknown(self, cmd):
         self.iface.send(f'Unexpected command: {cmd.command}', color='RED')
 
+    def cmd_HELP(self, _):
+        self.endpoint.help()
+
+    def msg_RPL_HELP(self, message):
+        content = message.params[0]
+        self.iface.send(content, color='YELLOW')
+
     def cmd_LEAVE(self, _):
         self.endpoint.leave(self.channel)
 
     def msg_OK_LEFT(self, message):
         channel, _ = message.params
         self.iface.send(f'You left channel {channel}.', color='YELLOW')
+        self.manager.state_logged_in(starting=False)
+
+    def cmd_QUIT(self, _):
+        self.endpoint.quit(self.channel)
+
+    def msg_OK_QUIT(self, message):
+        channel, _ = message.params
+        self.iface.send(f'You quit channel {channel}.', color='YELLOW')
         self.manager.state_logged_in(starting=False)
 
     def cmd_MSG(self, cmd):
@@ -480,7 +491,44 @@ class ConversationState(State):
         _, content = message.params
         self.iface.send(content, prefix=f'>>> {author}: ')
 
-    def msg_OK_DELETED(self, _):
+    def cmd_ADD(self, cmd):
+        nicks = cmd.content.split()
+        if nicks:
+            self.endpoint.add(self.channel, nicks)
+        else:
+            self.iface.send(f'Pass nicks to add!', color='RED')
+
+    def msg_OK_ADDED(self, message):
+        _, *nicks = message.params
+        nicks = ', '.join(nicks)
+        self.iface.send(f'Users: {nicks} added to channel.', color='YELLOW')
+
+    def msg_ERR_NOUSER(self, message):
+        nick = message.params[0]
+        self.iface.send(f'User {nick} is not registered!', color='RED')
+
+    def msg_ERR_NO_PERM(self, message):
+        perm_type, reason = message.params
+        self.iface.send(f'You have no {perm_type} permission: {reason}', color='RED')
+
+    def cmd_KICK(self, cmd):
+        nicks = cmd.content.split()
+        if nicks:
+            self.endpoint.kick(self.channel, nicks)
+        else:
+            self.iface.send(f'Pass nicks to kick!', color='RED')
+
+    def msg_OK_KICKED(self, message):
+        _, *nicks = message.params
+        nicks = ', '.join(nicks)
+        self.iface.send(f'Users: {nicks} kicked from channel.', color='YELLOW')
+
+    def cmd_DELETE(self, _):
+        self.endpoint.delete(self.channel)
+
+    def msg_OK_DELETED(self, message):
+        channel = message.params[0]
+        self.iface.send(f'Channel {channel} deleted.', color='YELLOW')
         self.manager.state_logged_in(starting=False)
 
     def cmd_NAMES(self, _):
@@ -494,6 +542,10 @@ class ConversationState(State):
     def msg_KICKED(self, _):
         self.iface.send('You got kicked from the channel!', color='RED')
         self.manager.state_logged_in(starting=False)
+
+    def msg_ERR_BAD_OP(self, message):
+        operation = message.params[0]
+        self.iface.send(f"It's not possible to {operation}!", color='RED')
 
 
 class ConnectionFactory(ClientFactory):

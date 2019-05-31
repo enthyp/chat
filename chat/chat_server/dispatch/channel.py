@@ -5,14 +5,14 @@ class Channel:
         self.server_peers = set()
         self.users = set()
 
-    def register_peer(self, peer, nick):
+    def register_peer(self, peer, nick=None):
         if nick:
             self.client_peers.add(peer)
             self.users.add(nick)
         else:
             self.server_peers.add(peer)
 
-    def unregister_peer(self, peer, nick):
+    def unregister_peer(self, peer, nick=None):
         if nick:
             self.client_peers.remove(peer)
             self.users.remove(nick)
