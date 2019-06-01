@@ -50,6 +50,7 @@ class DBService(service.Service):
         transaction.execute(query.create_table_user)
         transaction.execute(query.create_table_channel)
         transaction.execute(query.create_table_is_member)
+        transaction.execute(query.create_table_notification)
 
     @defer.inlineCallbacks
     def account_available(self, nick, mail):
@@ -162,6 +163,26 @@ class DBService(service.Service):
 
     @log_operation
     @defer.inlineCallbacks
-    def get_priv_channels(self, nick):
+    def get_priv_channels(self, nick=None):
         channels = yield self._dbpool.runQuery(query.select_priv_channels, (nick,))
         return [c[0] for c in channels]
+
+    @log_operation
+    def add_notification(self, author, target, notification):
+        return self._dbpool.runOperation(query.insert_notification, (author, target, notification))
+
+    @log_operation
+    @defer.inlineCallbacks
+    def get_notifications(self, user):
+        results = yield self._dbpool.runQuery(query.select_notifications, (user,))
+        return results
+
+    @log_operation
+    def delete_notifications(self, user):
+        return self._dbpool.runOperation(query.delete_notifications, (user,))
+
+    @log_operation
+    @defer.inlineCallbacks
+    def get_members(self, channel):
+        results = yield self._dbpool.runQuery(query.select_members, (channel,))
+        return [r[0] for r in results]

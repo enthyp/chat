@@ -413,9 +413,10 @@ class LoggedInState(State):
         operation = message.params[0]
         self.iface.send(f"It's not possible to {operation}!", color='RED')
 
-    def msg_NOTIFY(self, message):
-        reason, notification = message.params
-        self.iface.send(f'Notified! Reason: {reason}: {notification}', color='GREEN')
+    # TODO: popup maybe?
+    def msg_NOTIFIED(self, message):
+        author, notification = message.params
+        self.iface.send(f'Notification from {author}: {notification}', color='GREEN')
 
 
 class ConversationState(State):
@@ -546,6 +547,11 @@ class ConversationState(State):
     def msg_ERR_BAD_OP(self, message):
         operation = message.params[0]
         self.iface.send(f"It's not possible to {operation}!", color='RED')
+
+    # TODO: popup maybe?
+    def msg_NOTIFIED(self, message):
+        author, notification = message.params
+        self.iface.send(f'Notification from {author}: {notification}', color='GREEN')
 
 
 class ConnectionFactory(ClientFactory):

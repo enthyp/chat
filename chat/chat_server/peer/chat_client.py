@@ -121,8 +121,8 @@ class ChatClientEndpoint(comm.Endpoint):
     def msg(self, from_user, channel, content):
         self.send(f':{from_user} MSG {channel} :{content}')
 
-    def notify(self, who, notifies, type, notification):
-        self.send(f'NOTIFY {who} {notifies} {type} :{notification}')
+    def notified(self, notifies, notification):
+        self.send(f'NOTIFIED {notifies} :{notification}')
 
     def bad_operation(self, operation):
         self.send(f'ERR_BAD_OP :{operation}')
@@ -312,14 +312,31 @@ class LoggedInState(peer.State):
 
             msg = comm.Message(command='OK_LOGIN', params=[nick])
             self.dispatcher.publish('servers', self.manager, msg)
-            self.dispatcher.add_user(nick)
+            self.dispatcher.add_peer(self.manager, nick)
+
+        # Notify fresher.
+        d = self.db.get_notifications(self.nick)
+
+        def notify(notifications):
+            for author, content in notifications:
+                self.endpoint.notified(author, content)
+
+        def del_notifications(_):
+            d = self.db.delete_notifications(self.nick)
+            from twisted.internet import reactor
+            d.addTimeout(1, reactor)
+
+        from twisted.internet import reactor
+        d.addTimeout(1, reactor)
+
+        d.addCallback(notify)
+        d.addCallback(del_notifications)
 
     def msg_LOGOUT(self, _):
         self.endpoint.logged_out(self.nick)
 
         msg = comm.Message(command='OK_LOGOUT', params=[self.nick])
         self.dispatcher.publish('servers', self.manager, msg)
-        self.dispatcher.remove_user(self.nick)
 
         self.manager.lose_connection()
 
@@ -330,7 +347,6 @@ class LoggedInState(peer.State):
 
             msg = comm.Message(command='OK_UNREG', params=[self.nick])
             self.dispatcher.publish('servers', self.manager, msg)
-            self.dispatcher.remove_user(self.nick)
 
             if not self.connected:
                 return
@@ -368,7 +384,6 @@ class LoggedInState(peer.State):
             if not channel_exists:
                 if mode == 'pub':
                     yield self.db.add_channel(channel_name, self.nick)
-                    # TODO: send invitations!
                 else:
                     if self.nick not in valid_nicks:
                         valid_nicks.append(self.nick)
@@ -379,6 +394,18 @@ class LoggedInState(peer.State):
 
                 msg = comm.Message(command='OK_CREATED', params=[channel_name, self.nick, mode, valid_nicks])
                 self.dispatcher.publish('servers', self.manager, msg)
+
+                if mode == 'priv':
+                    for nick in valid_nicks:
+                        if nick != self.nick:
+                            content = f'You were added to channel {channel_name}!'
+
+                            if self.dispatcher.is_on([nick]):
+                                notification = comm.Message(command='NOTIFIED',
+                                                            params=[self.nick, nick, content])
+                                self.dispatcher.notify(nick, notification)
+                            else:
+                                self.db.add_notification(self.nick, nick, content)
             elif self.connected:
                 self.endpoint.channel_exists(channel_name)
         except failure.Failure:
@@ -393,14 +420,28 @@ class LoggedInState(peer.State):
 
             if creator:
                 if creator == self.nick:
+                    try:
+                        mode = yield self.db.get_channel_mode(channel_name)
+                        if mode == 'priv':
+                            content = f'Channel {channel_name} was deleted!'
+                            members = yield self.db.get_members(channel_name)
+                            on_channel = self.dispatcher.names(channel_name)
+
+                            for nick in set(members) - on_channel:
+                                if nick != self.nick:
+                                    if self.dispatcher.is_on([nick]):
+                                        notification = comm.Message(command='NOTIFIED',
+                                                                    params=[self.nick, nick, content])
+                                        self.dispatcher.notify(nick, notification)
+                                    else:
+                                        self.db.add_notification(self.nick, nick, content)
+                    except failure.Failure:
+                        self.log_err(f'failed to send notifications upon {channel_name} deletion.')
+
                     yield self.db.delete_channel(channel_name)
 
-                    content = util.mark('Channel deleted.', 'RED')
-                    msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-                    self.dispatcher.publish(channel_name, self.manager, msg)
-
                     msg = comm.Message(command='OK_DELETED', params=[channel_name])
-                    self.dispatcher.publish(channel_name, self.manager, msg, to='clients')
+                    self.dispatcher.publish(channel_name, self.manager, msg, locally=True)
 
                     self.dispatcher.remove_channel(channel_name)
                     self.dispatcher.publish('servers', self.manager, msg)
@@ -506,7 +547,15 @@ class LoggedInState(peer.State):
                         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                         self.dispatcher.publish(channel, self.manager, msg)
 
-                        # TODO: notify (implement in Dispatcher)!
+                        for nick in valid_nicks:
+                            content = f'You were added to channel {channel}!'
+
+                            if self.dispatcher.is_on([nick]):
+                                notification = comm.Message(command='NOTIFIED',
+                                                            params=[self.nick, nick, content])
+                                self.dispatcher.notify(nick, notification)
+                            else:
+                                self.db.add_notification(self.nick, nick, content)
                 else:
                     self.endpoint.no_perms('ADD', 'You are not creator of this channel.')
             elif mode == 'pub':
@@ -544,24 +593,34 @@ class LoggedInState(peer.State):
                         self.dispatcher.publish('servers', self.manager, msg)
 
                         msg = comm.Message(command='KICKED', params=[channel, *valid_nicks])
-                        self.dispatcher.publish(channel, self.manager, msg, to='clients')
+                        self.dispatcher.publish(channel, self.manager, msg, locally=True)
 
                         content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
                         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                         self.dispatcher.publish(channel, self.manager, msg)
 
-                        # TODO: notify (implement in Dispatcher)!
+                        on_channel = self.dispatcher.names(channel)
+                        for nick in set(valid_nicks) - on_channel:
+                            content = f'You were kicked from channel {channel}!'
+
+                            if self.dispatcher.is_on([nick]):
+                                notification = comm.Message(command='NOTIFIED',
+                                                            params=[self.nick, nick, content])
+                                self.dispatcher.notify(nick, notification)
+                            else:
+                                self.db.add_notification(self.nick, nick, content)
                 else:
                     self.endpoint.no_perms('KICK', 'You are not creator of this channel.')
             elif mode == 'pub':
-                self.endpoint.bad_operation('kick members from a public channel')
+                self.endpoint.bad_operation('kick users from a public channel')
             else:
                 self.endpoint.no_channel(channel)
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 
-    def brd_NOTIFY(self, message):
-        pass
+    def brd_NOTIFIED(self, message):
+        who, _, content = message.params
+        self.endpoint.notified(who, content)
 
 
 class ConversationState(peer.State):
@@ -578,7 +637,7 @@ class ConversationState(peer.State):
         self.ai_conn = ai_conn
 
         self.endpoint.user_joined(channel_name, nick)
-        self.dispatcher.subscribe(channel_name, self.manager, self.nick)
+        self.dispatcher.subscribe(channel_name, self.nick)
 
         content = util.mark(f'{self.nick} joins the channel.', 'GREEN')
         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
@@ -635,7 +694,7 @@ class ConversationState(peer.State):
         content = util.mark(f'{self.nick} left the channel.', 'GREEN')
         msg = comm.Message(prefix='INFO', command='MSG', params=[content])
         self.dispatcher.publish(self.channel, self.manager, msg)
-        self.dispatcher.unsubscribe(self.channel, self.manager, self.nick)
+        self.dispatcher.unsubscribe(self.channel, self.nick)
 
         self.endpoint.user_left(self.channel, self.nick)
         self.manager.state_logged_in(self.nick, starting=False)
@@ -656,7 +715,7 @@ class ConversationState(peer.State):
             content = util.mark(f'Member quit: {self.nick}', 'GREEN')
             msg = comm.Message(prefix='INFO', command='MSG', params=[content])
             self.dispatcher.publish(self.channel, self.manager, msg)
-            self.dispatcher.unsubscribe(self.channel, self.manager, self.nick)
+            self.dispatcher.unsubscribe(self.channel, self.nick)
 
             self.endpoint.user_quit(self.channel, self.nick)
             self.manager.state_logged_in(self.nick, starting=False)
@@ -692,7 +751,15 @@ class ConversationState(peer.State):
                 msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                 self.dispatcher.publish(self.channel, self.manager, msg)
 
-                # TODO: notify (implement in Dispatcher)!
+                for nick in valid_nicks:
+                    content = f'You were added to channel {self.channel}!'
+
+                    if self.dispatcher.is_on([nick]):
+                        notification = comm.Message(command='NOTIFIED',
+                                                    params=[self.nick, nick, content])
+                        self.dispatcher.notify(nick, notification)
+                    else:
+                        self.db.add_notification(self.nick, nick, content)
             if self.connected:
                 for nick in set(nicks) - set(valid_nicks):
                     self.endpoint.no_user(nick)
@@ -728,13 +795,22 @@ class ConversationState(peer.State):
                 self.dispatcher.publish('servers', self.manager, msg)
 
                 msg = comm.Message(command='KICKED', params=[self.channel, *valid_nicks])
-                self.dispatcher.publish(self.channel, self.manager, msg, to='clients')
+                self.dispatcher.publish(self.channel, self.manager, msg, locally=True)
 
                 content = util.mark(f'Members kicked: {valid_nicks}', 'RED')
                 msg = comm.Message(prefix='INFO', command='MSG', params=[content])
                 self.dispatcher.publish(self.channel, self.manager, msg)
 
-                # TODO: notify (implement in Dispatcher)!
+                on_channel = self.dispatcher.names(self.channel)
+                for nick in set(valid_nicks) - on_channel:
+                    content = f'You were kicked from channel {self.channel}!'
+
+                    if self.dispatcher.is_on([nick]):
+                        notification = comm.Message(command='NOTIFIED',
+                                                    params=[self.nick, nick, content])
+                        self.dispatcher.notify(nick, notification)
+                    else:
+                        self.db.add_notification(self.nick, nick, content)
             if self.connected:
                 for nick in set(nicks) - set(valid_nicks):
                     self.endpoint.no_user(nick)
@@ -753,14 +829,28 @@ class ConversationState(peer.State):
             return
 
         try:
+            try:
+                mode = yield self.db.get_channel_mode(self.channel)
+                if mode == 'priv':
+                    content = f'Channel {self.channel} was deleted!'
+
+                    members = yield self.db.get_members(self.channel)
+                    on_channel = self.dispatcher.names(self.channel)
+                    for nick in set(members) - on_channel:
+                        if nick != self.nick:
+                            if self.dispatcher.is_on([nick]):
+                                notification = comm.Message(command='NOTIFIED',
+                                                            params=[self.nick, nick, content])
+                                self.dispatcher.notify(nick, notification)
+                            else:
+                                self.db.add_notification(self.nick, nick, content)
+            except failure.Failure:
+                self.log_err(f'failed to send notifications upon {self.channel} deletion.')
+
             yield self.db.delete_channel(self.channel)
 
-            content = util.mark('Channel deleted.', 'RED')
-            msg = comm.Message(prefix='INFO', command='MSG', params=[content])
-            self.dispatcher.publish(self.channel, self.manager, msg)
-
             msg = comm.Message(command='OK_DELETED', params=[self.channel])
-            self.dispatcher.publish(self.channel, self.manager, msg, to='clients')
+            self.dispatcher.publish(self.channel, self.manager, msg, locally=True)
 
             self.dispatcher.remove_channel(self.channel)
             self.dispatcher.publish('servers', self.manager, msg)
@@ -786,6 +876,10 @@ class ConversationState(peer.State):
     def brd_OK_DELETED(self, _):
         self.endpoint.channel_deleted(self.channel)
         self.manager.state_logged_in(self.nick, starting=False)
+
+    def brd_NOTIFIED(self, message):
+        who, _, content = message.params
+        self.endpoint.notified(who, content)
 
 
 class ChatClient(peer.Peer):

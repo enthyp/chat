@@ -1,5 +1,5 @@
-from twisted.python import log
-from twisted.internet import protocol
+from twisted.python import log, failure
+from twisted.internet import protocol, defer
 from twisted.application import service
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 

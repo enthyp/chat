@@ -18,10 +18,11 @@ class Peer:
     def lose_connection(self):
         self.protocol.unregister_subscriber()
         self.protocol.loseConnection()
-        # TODO: unregister myself from Dispatcher!
+        self.dispatcher.remove_peer(self)
 
     def on_connection_closed(self):
         self.protocol.unregister_subscriber()
+        self.dispatcher.remove_peer(self)
 
 
 class State(comm.MessageSubscriber):
