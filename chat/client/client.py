@@ -607,8 +607,7 @@ class Client:
         self.iface.lose_connection()
 
         from twisted.internet import reactor
-        if reactor.running:
-            reactor.stop()
+        reactor.stop()
 
     def state_init(self, again=False):
         if again:
@@ -648,19 +647,16 @@ def client_main():
         iface = gui.GUI()
     else:
         app = QtWidgets.QApplication(sys.argv)
-        iface = gui_qt.GUI()
+        iface = gui_qt.GUI(app)
+
         import qt5reactor
         qt5reactor.install()
-        client = Client(args.host, args.port, iface=iface)
-        iface.register_client(client)
-        client.run()
-        sys.exit(app.exec_())
 
     client = Client(args.host, args.port, iface=iface)
     iface.register_client(client)
 
     client.run()
-
+    sys.exit()
 
 if __name__ == '__main__':
     client_main()

@@ -79,19 +79,21 @@ class UIMainWindow(object):
 
 
 class GUI(QtWidgets.QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, app, parent=None):
         super(GUI, self).__init__(parent)
         self.ui = UIMainWindow()
         self.ui.setupUi(self)
         self.ui.pushButton.clicked.connect(self.send_message)
-        self.ui.pushButton_2.clicked.connect(self.send_message)
+        self.ui.pushButton_2.clicked.connect(self.quit_channel)
 
         self.ui.plainTextEdit.installEventFilter(self)
         self.client = None
+        self.app = app
         self.show()
 
     def send_message(self):
         message = self.ui.plainTextEdit.toPlainText()
+        self.ui.textBrowser.append(message)
         if message.strip(" ") != "":
             if self.client:
                 self.client.handle_input(message.strip(" "))
@@ -112,10 +114,12 @@ class GUI(QtWidgets.QMainWindow):
         return super(GUI, self).eventFilter(obj, event)
 
     def send(self, line, prefix='', color='WHITE'):
-        self.ui.textBrowser.append(line + '\n')
+        self.ui.textBrowser.append(line)
 
     def register_client(self, client):
         self.client = client
 
     def lose_connection(self):
         self.close()
+        self.app.quit()
+        sys.exit(self.app.exec_())
