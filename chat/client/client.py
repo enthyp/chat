@@ -1,10 +1,13 @@
 import argparse
+import sys
 from twisted.internet.protocol import ClientFactory
 from twisted.internet import defer
 from twisted.python import log
+from PyQt5 import QtWidgets
+
 
 from chat import communication as comm
-from chat.client import cmdline, gui
+from chat.client import cmdline, gui, gui_qt
 
 
 class Command:
@@ -604,7 +607,8 @@ class Client:
         self.iface.lose_connection()
 
         from twisted.internet import reactor
-        reactor.stop()
+        if reactor.running:
+            reactor.stop()
 
     def state_init(self, again=False):
         if again:
@@ -631,20 +635,32 @@ def parse_args():
     parser.add_argument('host', nargs='?', default='localhost', help='Host to connect to.')
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--cmd', action='store_true')
-    group.add_argument('--gui', action='store_false')
+    group.add_argument('--gui', action='store_true')
+    group.add_argument('--gui2', action='store_true')
     return parser.parse_args()
 
 
 def client_main():
     args = parse_args()
     if args.cmd:
-        iface = cmdline.CMDLine()   # will depend on args
-    else:
+        iface = cmdline.CMDLine()
+    elif args.gui:
         iface = gui.GUI()
+    else:
+        app = QtWidgets.QApplication(sys.argv)
+        iface = gui_qt.GUI()
+        import qt5reactor
+        qt5reactor.install()
+        client = Client(args.host, args.port, iface=iface)
+        iface.register_client(client)
+        client.run()
+        sys.exit(app.exec_())
+
     client = Client(args.host, args.port, iface=iface)
     iface.register_client(client)
 
     client.run()
+
 
 if __name__ == '__main__':
     client_main()

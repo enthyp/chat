@@ -15,6 +15,7 @@ ENDC = '\033[0m'
 
 
 def mark(msg, color):
-    if color in colors:
-        return colors[color] + msg + ENDC
-    return colors['WHITE'] + msg + ENDC
+    # if color in colors:
+    #     return colors[color] + msg + ENDC
+    # return colors['WHITE'] + msg + ENDC
+    return msg  # PyQt5 quick fix

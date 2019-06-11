@@ -6,3 +6,5 @@ pytest>=4.4.1
 flask>=1.0.2
 tkinter>=8.6
 jinja2>=2.10.1
+pyqt>=5.9.2
+qt5reactor>=0.5
