@@ -39,12 +39,6 @@ def main_page():
         conn.execute('INSERT INTO message VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)', params)
         conn.commit()
 
-        cur = conn.cursor()
-        cur.execute('SELECT DISTINCT channel FROM message')
-
-        if channel_name not in channels_list:
-            channels_list.append(channel_name)
-
         live_list.append(author + "> " + message)
 
         if len(live_list) == 40:
@@ -52,6 +46,13 @@ def main_page():
 
         return '', 204
     else:
+        conn = db.get_db()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM message')
+        rows = cur.fetchall()
+
+        channels_list = extract_channels(rows)
+        channels_list = [name[1:] for name in channels_list]
         return render_template("main_page.html", messages=live_list, channels=channels_list)
 
 
