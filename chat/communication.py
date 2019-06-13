@@ -66,7 +66,6 @@ class Message:
         self.command = command.upper()
         self.params = params
 
-
     @staticmethod
     def _parse_message(string):
         """
