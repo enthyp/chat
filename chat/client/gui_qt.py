@@ -114,7 +114,7 @@ class GUI(QtWidgets.QMainWindow):
         return super(GUI, self).eventFilter(obj, event)
 
     def send(self, line, prefix='', color='WHITE'):
-        self.ui.textBrowser.append(line)
+        self.ui.textBrowser.append(prefix + line)
 
     def register_client(self, client):
         self.client = client
