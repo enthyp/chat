@@ -6,6 +6,7 @@ from monitor import app, db
 live_list = []
 channels_list = []
 
+
 # extracts all messages from records and returns a list
 def extract_messages(rows):
     return [r[0] + "> " + r[2] for r in rows]
@@ -13,11 +14,19 @@ def extract_messages(rows):
 
 # extracts all ratings from records and returns list of tuples
 def extract_ratings(rows):
-    return [row[3:] for row in rows]
+    return [list(row[3:]) for row in rows]
+
+
+# extracts all channels from records and returns list
+def extract_channels(rows):
+    return list(set([row[1] for row in rows]))
 
 
 @app.route('/', methods=['GET', 'POST'])
 def main_page():
+    global channels_list
+    global live_list
+
     if request.method == 'POST':
         data = json.loads(request.data)
         author = data['author']
@@ -32,12 +41,11 @@ def main_page():
 
         cur = conn.cursor()
         cur.execute('SELECT DISTINCT channel FROM message')
-        global channels_list
-        channels_list = cur.fetchall()
 
-        global live_list
+        if channel_name not in channels_list:
+            channels_list.append(channel_name)
+
         live_list.append(author + "> " + message)
-
 
         if len(live_list) == 40:
             live_list = live_list[1:]
@@ -57,12 +65,8 @@ def history():
     rows = cur.fetchall()
 
     messages = extract_messages(rows)
-    ratings = extract_ratings(rows)
-
-    ratings_list = [list(row[3:]) for row in rows]
-    ratings_list = [list(row[3:]) for row in rows]
-    channels_list = [ row[1] for row in rows ]
-    channels_list = list(set(channels_list))
+    ratings_list = extract_ratings(rows)
+    channels_list = extract_channels(rows)
 
     for i in range(0, len(ratings_list)):
         for j in range(0, 6):
@@ -83,16 +87,13 @@ def history():
 def channel(name):
     conn = db.get_db()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM message WHERE channel = ?', ('#'+name, ))
+    cur.execute('SELECT * FROM message WHERE channel = ?', ('#' + name,))
     rows = cur.fetchall()
 
-
     messages = extract_messages(rows)
-    ratings = extract_ratings(rows)
+    ratings_list = extract_ratings(rows)
+    channels_list = [name]
 
-    ratings_list = [list(row[3:]) for row in rows]
-    channels_list = [ row[1] for row in rows ]
-    print(channels_list)
     for i in range(0, len(ratings_list)):
         for j in range(0, 6):
 
