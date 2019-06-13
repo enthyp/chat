@@ -1,36 +1,20 @@
 class Channel:
-    def __init__(self, name=None):
+    def __init__(self, dispatcher, name):
+        self.dispatcher = dispatcher
         self.name = name
-        self.client_peers = set()
-        self.server_peers = set()
         self.users = set()
 
-    def register_peer(self, peer, nick):
-        if nick:
-            self.client_peers.add(peer)
-            self.users.add(nick)
-        else:
-            self.server_peers.add(peer)
+    def register_user(self, nick):
+        self.users.add(nick)
 
-    def unregister_peer(self, peer, nick):
-        if nick:
-            self.client_peers.remove(peer)
-            self.users.remove(nick)
-        else:
-            self.server_peers.remove(peer)
+    def unregister_user(self, nick):
+        self.users.discard(nick)
 
-    def publish(self, author, message, to):
-        if to == 'all':
-            peers = self.client_peers | self.server_peers
-        elif to == 'clients':
-            peers = self.client_peers
-        elif to == 'servers':
-            peers = self.server_peers
-        else:
-            return
+    def publish(self, author, message, locally=False):
+        peers = self.dispatcher.get_peers(self.users, locally)
 
         for peer in peers - {author}:
             peer.receive(message)
 
     def names(self):
-        return list(self.users)
+        return self.users

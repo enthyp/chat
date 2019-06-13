@@ -265,7 +265,7 @@
           </div>
     </nav>
     <br/>
-    <div id="mainHeader"><p>Full History</p></div>
+    <div id="mainHeader"><p>Channel History</p></div>
 
     <div>
         <a href="/"  id=returnHeader>Return to Live Monitor</a>
@@ -273,7 +273,7 @@
             <div id="textBox">
                     {% for msg in messages %}
                       {% set outer_loop = loop %}
-                      {% for i in range(0,4) %}
+                      {% for i in range(0,6) %}
                       <p
                          {% if i==0 %} 
                             {% if stats[outer_loop.index-1][i+1] == 1 %} class="severeToxic1" 
