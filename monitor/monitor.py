@@ -4,7 +4,7 @@ import json
 from monitor import app, db
 
 live_list = []
-
+channels_list = []
 
 # extracts all messages from records and returns a list
 def extract_messages(rows):
@@ -30,15 +30,21 @@ def main_page():
         conn.execute('INSERT INTO message VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)', params)
         conn.commit()
 
+        cur = conn.cursor()
+        cur.execute('SELECT DISTINCT channel FROM message')
+        global channels_list
+        channels_list = cur.fetchall()
+
         global live_list
         live_list.append(author + "> " + message)
+
 
         if len(live_list) == 40:
             live_list = live_list[1:]
 
         return '', 204
     else:
-        return render_template("main_page.html", messages=live_list)
+        return render_template("main_page.html", messages=live_list, channels=channels_list)
 
 
 # stats: 2D ARRAY [[toxic, severeToxic, ...], [toxic, severeToxic, ...]]
@@ -53,7 +59,10 @@ def history():
     messages = extract_messages(rows)
     ratings = extract_ratings(rows)
 
-    ratings_list=[list(row[3:]) for row in rows]
+    ratings_list = [list(row[3:]) for row in rows]
+    ratings_list = [list(row[3:]) for row in rows]
+    channels_list = [ row[1] for row in rows ]
+    channels_list = list(set(channels_list))
 
     for i in range(0, len(ratings_list)):
         for j in range(0, 6):
@@ -67,9 +76,33 @@ def history():
             else:
                 ratings_list[i][j] = 3
 
-    return render_template("history.html", stats=ratings_list, messages=messages)
+    return render_template("history.html", stats=ratings_list, messages=messages, channels=channels_list)
 
 
-@app.route('/stats')
-def stats():
-    return render_template("stats.html")
+@app.route('/channel/<name>')
+def channel(name):
+    conn = db.get_db()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM message WHERE channel = ?', ('#'+name, ))
+    rows = cur.fetchall()
+
+
+    messages = extract_messages(rows)
+    ratings = extract_ratings(rows)
+
+    ratings_list = [list(row[3:]) for row in rows]
+    channels_list = [ row[1] for row in rows ]
+    print(channels_list)
+    for i in range(0, len(ratings_list)):
+        for j in range(0, 6):
+
+            if ratings_list[i][j] < 0.5:
+                ratings_list[i][j] = 0
+            elif ratings_list[i][j] < 0.65:
+                ratings_list[i][j] = 1
+            elif ratings_list[i][j] < 0.80:
+                ratings_list[i][j] = 2
+            else:
+                ratings_list[i][j] = 3
+
+    return render_template("channel.html", stats=ratings_list, messages=messages, channels=channels_list, name=name)
