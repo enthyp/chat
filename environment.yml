@@ -1,0 +1,10 @@
+name: chat_app_env
+dependencies:
+  - python>=3.6.6
+  - twisted>=18.9.0
+  - keras>=2.2.4
+  - monitor>=1.0.2
+  - tk>=8.6
+  - jinja2>=2.10.1
+  - pytest>=4.4.1
+  - pyqt>=5.9.2
