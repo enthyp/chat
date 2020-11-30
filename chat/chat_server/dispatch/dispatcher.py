@@ -45,10 +45,7 @@ class Dispatcher:
             for c in self.channels.values():
                 c.unregister_user(nick)
         elif isinstance(peer, ChatServer):
-            nicks = []
-            for k, v in self.user2peer.items():
-                if v == peer:
-                    nicks.append(k)
+            nicks = [k for k, v in self.user2peer.items() if v == peer]
             self.server_peers.remove(peer)
             for n in nicks:
                 self.user2peer.pop(n, None)

@@ -19,7 +19,7 @@ def extract_ratings(rows):
 
 # extracts all channels from records and returns list
 def extract_channels(rows):
-    return list(set([row[1] for row in rows]))
+    return list({row[1] for row in rows})
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -69,8 +69,8 @@ def history():
     ratings_list = extract_ratings(rows)
     channels_list = extract_channels(rows)
 
-    for i in range(0, len(ratings_list)):
-        for j in range(0, 6):
+    for i in range(len(ratings_list)):
+        for j in range(6):
 
             if ratings_list[i][j] < 0.5:
                 ratings_list[i][j] = 0
@@ -95,8 +95,8 @@ def channel(name):
     ratings_list = extract_ratings(rows)
     channels_list = [name]
 
-    for i in range(0, len(ratings_list)):
-        for j in range(0, 6):
+    for i in range(len(ratings_list)):
+        for j in range(6):
 
             if ratings_list[i][j] < 0.5:
                 ratings_list[i][j] = 0

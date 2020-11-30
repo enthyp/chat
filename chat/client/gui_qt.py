@@ -94,9 +94,8 @@ class GUI(QtWidgets.QMainWindow):
     def send_message(self):
         message = self.ui.plainTextEdit.toPlainText()
         self.ui.textBrowser.append(message)
-        if message.strip(" ") != "":
-            if self.client:
-                self.client.handle_input(message.strip(" "))
+        if message.strip(" ") != "" and self.client:
+            self.client.handle_input(message.strip(" "))
         self.ui.plainTextEdit.clear()
 
     def quit_channel(self):

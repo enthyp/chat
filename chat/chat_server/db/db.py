@@ -85,9 +85,8 @@ class DBService(service.Service):
             log.err('DB: password_correct CALL SUCCESSFUL')
             if correct_password:
                 return correct_password[0][0] == password
-            else:
-                log.err('DB: password_correct CALL FAILURE: no such user in database')
-                raise failure.Failure(sqlite3.IntegrityError())
+            log.err('DB: password_correct CALL FAILURE: no such user in database')
+            raise failure.Failure(sqlite3.IntegrityError())
         except failure.Failure as f:
             log.err(f'DB: password_correct FAILURE: {f.getErrorMessage()}')
             raise
@@ -174,8 +173,7 @@ class DBService(service.Service):
     @log_operation
     @defer.inlineCallbacks
     def get_notifications(self, user):
-        results = yield self._dbpool.runQuery(query.select_notifications, (user,))
-        return results
+        return (yield self._dbpool.runQuery(query.select_notifications, (user,)))
 
     @log_operation
     def delete_notifications(self, user):
