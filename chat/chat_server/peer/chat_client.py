@@ -490,7 +490,6 @@ class LoggedInState(peer.State):
             else:
                 if self.connected:
                     self.endpoint.no_channel(channel_name)
-            pass
         except failure.Failure:
             self.endpoint.internal_error('DB error, please try again.')
 

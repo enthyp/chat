@@ -6,8 +6,7 @@ from monitor import app
 
 def connect_db():
     """Connects to the specific database."""
-    conn = sqlite3.connect(app.config['DATABASE'])
-    return conn
+    return sqlite3.connect(app.config['DATABASE'])
 
 
 def init_db():
